@@ -114,6 +114,8 @@ public:
 
 TEST_P(DNNTestNetwork, AlexNet)
 {
+    if (backend == DNN_BACKEND_INFERENCE_ENGINE && target == DNN_TARGET_OPENCL)
+        throw SkipTestException("");
     processNet("dnn/bvlc_alexnet.caffemodel", "dnn/bvlc_alexnet.prototxt",
                Size(227, 227), "prob", "caffe",
                target == DNN_TARGET_OPENCL ? "dnn/halide_scheduler_opencl_alexnet.yml" :
@@ -161,7 +163,9 @@ TEST_P(DNNTestNetwork, ENet)
 
 TEST_P(DNNTestNetwork, MobileNet_SSD_Caffe)
 {
-    if (backend == DNN_BACKEND_HALIDE) throw SkipTestException("");
+    if (backend == DNN_BACKEND_HALIDE ||
+        backend == DNN_BACKEND_INFERENCE_ENGINE && target == DNN_TARGET_OPENCL)
+        throw SkipTestException("");
     Mat sample = imread(findDataFile("dnn/street.png", false));
     Mat inp = blobFromImage(sample, 1.0f / 127.5, Size(300, 300), Scalar(127.5, 127.5, 127.5), false);
 
@@ -171,7 +175,9 @@ TEST_P(DNNTestNetwork, MobileNet_SSD_Caffe)
 
 TEST_P(DNNTestNetwork, MobileNet_SSD_TensorFlow)
 {
-    if (backend == DNN_BACKEND_HALIDE) throw SkipTestException("");
+    if (backend == DNN_BACKEND_HALIDE ||
+        backend == DNN_BACKEND_INFERENCE_ENGINE && target == DNN_TARGET_OPENCL)
+        throw SkipTestException("");
     Mat sample = imread(findDataFile("dnn/street.png", false));
     Mat inp = blobFromImage(sample, 1.0f / 127.5, Size(300, 300), Scalar(127.5, 127.5, 127.5), false);
     processNet("dnn/ssd_mobilenet_v1_coco.pb", "dnn/ssd_mobilenet_v1_coco.pbtxt",
@@ -213,13 +219,17 @@ TEST_P(DNNTestNetwork, OpenPose_pose_mpi_faster_4_stages)
 
 TEST_P(DNNTestNetwork, OpenFace)
 {
-    if (backend == DNN_BACKEND_HALIDE) throw SkipTestException("");
+    if (backend == DNN_BACKEND_HALIDE ||
+        backend == DNN_BACKEND_INFERENCE_ENGINE && target == DNN_TARGET_OPENCL)
+        throw SkipTestException("");
     processNet("dnn/openface_nn4.small2.v1.t7", "", Size(96, 96), "", "torch");
 }
 
 TEST_P(DNNTestNetwork, opencv_face_detector)
 {
-    if (backend == DNN_BACKEND_HALIDE) throw SkipTestException("");
+    if (backend == DNN_BACKEND_HALIDE ||
+        backend == DNN_BACKEND_INFERENCE_ENGINE && target == DNN_TARGET_OPENCL)
+        throw SkipTestException("");
     Mat img = imread(findDataFile("gpu/lbpcascade/er.png", false));
     Mat inp = blobFromImage(img, 1.0, Size(), Scalar(104.0, 177.0, 123.0), false, false);
     processNet("dnn/opencv_face_detector.caffemodel", "dnn/opencv_face_detector.prototxt",
@@ -228,11 +238,19 @@ TEST_P(DNNTestNetwork, opencv_face_detector)
 
 TEST_P(DNNTestNetwork, Inception_v2_SSD_TensorFlow)
 {
-    if (backend == DNN_BACKEND_HALIDE) throw SkipTestException("");
+    if (backend == DNN_BACKEND_HALIDE ||
+        backend == DNN_BACKEND_INFERENCE_ENGINE && target == DNN_TARGET_OPENCL)
+        throw SkipTestException("");
     Mat sample = imread(findDataFile("dnn/street.png", false));
     Mat inp = blobFromImage(sample, 1.0f / 127.5, Size(300, 300), Scalar(127.5, 127.5, 127.5), false);
     processNet("dnn/ssd_inception_v2_coco_2017_11_17.pb", "dnn/ssd_inception_v2_coco_2017_11_17.pbtxt",
                inp, "detection_out", "tensorflow");
+}
+
+TEST_P(DNNTestNetwork, DenseNet_121)
+{
+    if (backend == DNN_BACKEND_HALIDE) throw SkipTestException("");
+    processNet("dnn/DenseNet_121.caffemodel", "dnn/DenseNet_121.prototxt", Size(224, 224), "", "caffe");
 }
 
 const tuple<DNNBackend, DNNTarget> testCases[] = {
@@ -242,6 +260,7 @@ const tuple<DNNBackend, DNNTarget> testCases[] = {
 #endif
 #ifdef HAVE_INF_ENGINE
     tuple<DNNBackend, DNNTarget>(DNN_BACKEND_INFERENCE_ENGINE, DNN_TARGET_CPU),
+    tuple<DNNBackend, DNNTarget>(DNN_BACKEND_INFERENCE_ENGINE, DNN_TARGET_OPENCL),
 #endif
     tuple<DNNBackend, DNNTarget>(DNN_BACKEND_DEFAULT, DNN_TARGET_OPENCL)
 };

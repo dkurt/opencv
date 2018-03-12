@@ -55,7 +55,7 @@ public:
 
     virtual size_t getBatchSize() const noexcept;
 
-    void initEngine();
+    void initEngine(int targetId);
 
     void addBlobs(const std::vector<Ptr<BackendWrapper> >& wrappers);
 
@@ -71,6 +71,7 @@ private:
     InferenceEngine::BlobMap outBlobs;
     InferenceEngine::BlobMap allBlobs;
     InferenceEngine::InferenceEnginePluginPtr engine;
+    InferenceEngine::TargetDevice targetDevice;
 };
 
 class InfEngineBackendNode : public BackendNode
@@ -101,15 +102,13 @@ public:
     InferenceEngine::TBlob<float>::Ptr blob;
 };
 
-InferenceEngine::TBlob<float>::Ptr wrapToInfEngineBlob(const Mat& m);
+InferenceEngine::TBlob<float>::Ptr wrapToInfEngineBlob(const Mat& m, InferenceEngine::Layout layout = InferenceEngine::Layout::ANY);
 
-InferenceEngine::TBlob<float>::Ptr wrapToInfEngineBlob(const Mat& m, const std::vector<size_t>& shape);
+InferenceEngine::TBlob<float>::Ptr wrapToInfEngineBlob(const Mat& m, const std::vector<size_t>& shape, InferenceEngine::Layout layout);
 
 InferenceEngine::DataPtr infEngineDataNode(const Ptr<BackendWrapper>& ptr);
 
-// Fuses convolution weights and biases with channel-wise scales and shifts.
-void fuseConvWeights(const std::shared_ptr<InferenceEngine::ConvolutionLayer>& conv,
-                     const Mat& w, const Mat& b = Mat());
+Mat infEngineBlobToMat(const InferenceEngine::Blob::Ptr& blob);
 
 #endif  // HAVE_INF_ENGINE
 

@@ -1163,17 +1163,17 @@ struct Net::Impl
         for (it = layers.begin(); it != layers.end(); ++it)
         {
             LayerData &ld = it->second;
-            ld.skip = true;  // Initially skip all Inference Engine supported layers.
-            Ptr<Layer> layer = ld.layerInstance;
+            bool fused = ld.skip && ld.id != 0;
 
+            Ptr<Layer> layer = ld.layerInstance;
             if (!layer->supportBackend(preferableBackend))
             {
                 addInfEngineNetOutputs(ld);
-                ld.skip = false;
                 net = Ptr<InfEngineBackendNet>();
                 netBlobsWrappers.clear();
                 continue;
             }
+            ld.skip = true;  // Initially skip all Inference Engine supported layers.
 
             // Create a new network if one of inputs from different Inference Engine graph.
             for (int i = 0; i < ld.inputBlobsId.size(); ++i)
@@ -1213,19 +1213,16 @@ struct Net::Impl
             }
             netBlobsWrappers[ld.id] = ld.outputBlobsWrappers[0];
 
-            bool fused = false;
             Ptr<BackendNode> node;
             if (!net.empty())
             {
-                // Try to fuse.
-                bool inPlace = ld.inputBlobsId.size() == 1 && ld.outputBlobs.size() == 1 &&
-                               ld.inputBlobs[0]->data == ld.outputBlobs[0].data;
-                if (inPlace)
+                if (fused)
                 {
-                    node = layer->tryAttach(layers[ld.inputBlobsId[0].lid].backendNodes[preferableBackend]);
-                    fused = !node.empty();
-                    if (fused)
-                        ld.inputBlobsWrappers = layers[ld.inputBlobsId[0].lid].inputBlobsWrappers;
+                    bool inPlace = ld.inputBlobsId.size() == 1 && ld.outputBlobs.size() == 1 &&
+                                   ld.inputBlobs[0]->data == ld.outputBlobs[0].data;
+                    CV_Assert(inPlace);
+                    node = layers[ld.inputBlobsId[0].lid].backendNodes[preferableBackend];
+                    ld.inputBlobsWrappers = layers[ld.inputBlobsId[0].lid].inputBlobsWrappers;
                 }
             }
             else
@@ -1272,7 +1269,7 @@ struct Net::Impl
 
             if (!ieNode->net->isInitialized())
             {
-                ieNode->net->initEngine();
+                ieNode->net->initEngine(preferableTarget);
                 ld.skip = false;
             }
         }
@@ -1376,14 +1373,14 @@ struct Net::Impl
 
     void fuseLayers(const std::vector<LayerPin>& blobsToKeep_)
     {
-        if( !fusion || preferableBackend != DNN_BACKEND_DEFAULT)
+        if( !fusion || preferableBackend != DNN_BACKEND_DEFAULT &&
+                       preferableBackend != DNN_BACKEND_INFERENCE_ENGINE)
             return;
 
         CV_TRACE_FUNCTION();
 
         // scan through all the layers. If there is convolution layer followed by the activation layer,
         // we try to embed this activation into the convolution and disable separate execution of the activation
-        std::vector<String> outnames;
         std::set<LayerPin> pinsToKeep(blobsToKeep_.begin(),
                                       blobsToKeep_.end());
         MapIdToLayerData::iterator it;
@@ -1397,8 +1394,6 @@ struct Net::Impl
                 continue;
             }
             printf_(("analyzing %s: %s\n", ld.layerInstance->name.c_str(), ld.layerInstance->type.c_str()));
-            if( ld.consumers.size() == 0 )
-                outnames.push_back(ld.layerInstance->name);
 
             // the optimization #1. try to fuse batch norm, scaling and/or activation layers
             // with the current layer if they follow it. Normally, the are fused with the convolution layer,
@@ -1406,7 +1401,7 @@ struct Net::Impl
             // some other layers.
 
             // TODO: OpenCL target support more fusion styles.
-            if ( preferableTarget == DNN_TARGET_OPENCL &&
+            if ( preferableBackend == DNN_BACKEND_DEFAULT && preferableTarget == DNN_TARGET_OPENCL &&
                  (!cv::ocl::useOpenCL() || (ld.layerInstance->type != "Convolution" &&
                  ld.layerInstance->type != "MVN")) )
                 continue;
@@ -1440,6 +1435,9 @@ struct Net::Impl
                     else
                         break;
                 }
+
+                if (preferableBackend != DNN_BACKEND_DEFAULT)
+                    continue;  // Go to the next layer.
 
                 // For now, OpenCL target support fusion with activation of ReLU/ChannelsPReLU/Power/Tanh
                 if ( preferableTarget != DNN_TARGET_OPENCL ||
@@ -1581,6 +1579,9 @@ struct Net::Impl
                     }
                 }
             }
+
+            if (preferableBackend != DNN_BACKEND_DEFAULT)
+                continue;  // Go to the next layer.
 
             // the optimization #2. if there is no layer that takes max pooling layer's computed
             // max indices (and only some semantical segmentation networks might need this;
