@@ -53,9 +53,14 @@ static InferenceEngine::DataPtr wrapToInfEngineDataNode(const Mat& m, const std:
 {
     std::vector<size_t> reversedShape(&m.size[0], &m.size[0] + m.dims);
     std::reverse(reversedShape.begin(), reversedShape.end());
+
+    InferenceEngine::Layout l = InferenceEngine::Layout::ANY;
+    if (m.dims == 4)
+        l = InferenceEngine::Layout::NCHW;
+    else if (m.dims == 2)
+        l = InferenceEngine::Layout::NC;
     return InferenceEngine::DataPtr(
-      new InferenceEngine::Data(name, reversedShape, InferenceEngine::Precision::FP32,
-                                InferenceEngine::Layout::NCHW)
+      new InferenceEngine::Data(name, reversedShape, InferenceEngine::Precision::FP32, l)
     );
 }
 
@@ -103,6 +108,12 @@ void InfEngineBackendWrapper::setHostDirty()
 
 }
 
+InfEngineBackendNet::InfEngineBackendNet()
+{
+    targetDevice = InferenceEngine::TargetDevice::eCPU;
+    precision = InferenceEngine::Precision::FP32;
+}
+
 void InfEngineBackendNet::Release() noexcept
 {
     layers.clear();
@@ -110,13 +121,23 @@ void InfEngineBackendNet::Release() noexcept
     outputs.clear();
 }
 
+void InfEngineBackendNet::setPrecision(InferenceEngine::Precision p) noexcept
+{
+    precision = p;
+}
+
 InferenceEngine::Precision InfEngineBackendNet::getPrecision() noexcept
 {
-    return InferenceEngine::Precision::FP32;
+    return precision;
 }
 
 // Assume that outputs of network is unconnected blobs.
 void InfEngineBackendNet::getOutputsInfo(InferenceEngine::OutputsDataMap &outputs_) noexcept
+{
+    outputs_ = outputs;
+}
+
+void InfEngineBackendNet::getOutputsInfo(InferenceEngine::OutputsDataMap &outputs_) const noexcept
 {
     outputs_ = outputs;
 }
@@ -292,9 +313,11 @@ void InfEngineBackendNet::initEngine(int targetId)
         engine = InferenceEngine::InferenceEnginePluginPtr("libMKLDNNPlugin.so");
 #endif  // _WIN32
     }
-    else if (targetId == DNN_TARGET_OPENCL)
+    else if (targetId == DNN_TARGET_OPENCL || targetId == DNN_TARGET_OPENCL_FP16)
     {
         setTargetDevice(InferenceEngine::TargetDevice::eGPU);
+        if (targetId == DNN_TARGET_OPENCL_FP16)
+            setPrecision(InferenceEngine::Precision::FP16);
 #ifdef _WIN32
         engine = InferenceEngine::InferenceEnginePluginPtr("clDNNPlugin.dll");
 #else
@@ -339,6 +362,16 @@ Mat infEngineBlobToMat(const InferenceEngine::Blob::Ptr& blob)
     std::vector<int> size(dims.begin(), dims.end());
     std::reverse(size.begin(), size.end());
     return Mat(size, CV_32F, (void*)blob->buffer());
+}
+
+InferenceEngine::TBlob<int16_t>::Ptr convertFp16(const InferenceEngine::Blob::Ptr& blob)
+{
+    auto halfs = InferenceEngine::make_shared_blob<int16_t>(InferenceEngine::Precision::FP16, blob->layout(), blob->dims());
+    halfs->allocate();
+    Mat floatsData(1, blob->size(), CV_32F, blob->buffer());
+    Mat halfsData(1, blob->size(), CV_16SC1, halfs->buffer());
+    convertFp16(floatsData, halfsData);
+    return halfs;
 }
 
 #endif  // HAVE_INF_ENGINE

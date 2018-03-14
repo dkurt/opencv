@@ -19,11 +19,17 @@ namespace cv { namespace dnn {
 class InfEngineBackendNet : public InferenceEngine::ICNNNetwork
 {
 public:
+    InfEngineBackendNet();
+
     virtual void Release() noexcept;
+
+    void setPrecision(InferenceEngine::Precision p) noexcept;
 
     virtual InferenceEngine::Precision getPrecision() noexcept;
 
     virtual void getOutputsInfo(InferenceEngine::OutputsDataMap &out) noexcept;
+
+    virtual void getOutputsInfo(InferenceEngine::OutputsDataMap &out) const noexcept;
 
     virtual void getInputsInfo(InferenceEngine::InputsDataMap &inputs) noexcept;
 
@@ -72,6 +78,7 @@ private:
     InferenceEngine::BlobMap allBlobs;
     InferenceEngine::InferenceEnginePluginPtr engine;
     InferenceEngine::TargetDevice targetDevice;
+    InferenceEngine::Precision precision;
 };
 
 class InfEngineBackendNode : public BackendNode
@@ -109,6 +116,10 @@ InferenceEngine::TBlob<float>::Ptr wrapToInfEngineBlob(const Mat& m, const std::
 InferenceEngine::DataPtr infEngineDataNode(const Ptr<BackendWrapper>& ptr);
 
 Mat infEngineBlobToMat(const InferenceEngine::Blob::Ptr& blob);
+
+// Convert Inference Engine blob with FP32 precision to FP16 precision.
+// Allocates memory for a new blob.
+InferenceEngine::TBlob<int16_t>::Ptr convertFp16(const InferenceEngine::Blob::Ptr& blob);
 
 #endif  // HAVE_INF_ENGINE
 

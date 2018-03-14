@@ -454,7 +454,7 @@ public:
         if (hasBias() || fusedBias)
         {
             Mat biasesMat({outCn}, CV_32F, &biasvec[0]);
-            ieLayer->_biases = wrapToInfEngineBlob(biasesMat, InferenceEngine::Layout::C);
+            ieLayer->_biases = wrapToInfEngineBlob(biasesMat, {outCn}, InferenceEngine::Layout::C);
         }
         return Ptr<BackendNode>(new InfEngineBackendNode(ieLayer));
 #endif  // HAVE_INF_ENGINE

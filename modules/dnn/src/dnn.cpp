@@ -1240,6 +1240,19 @@ struct Net::Impl
             CV_Assert(!ieNode.empty());
             ieNode->net = net;
 
+            if (preferableTarget == DNN_TARGET_OPENCL_FP16 && !fused)
+            {
+                ieNode->layer->precision = InferenceEngine::Precision::FP16;
+                auto weightableLayer = std::dynamic_pointer_cast<InferenceEngine::WeightableLayer>(ieNode->layer);
+                if (weightableLayer)
+                {
+                    if (weightableLayer->_weights)
+                        weightableLayer->_weights = convertFp16(weightableLayer->_weights);
+                    if (weightableLayer->_biases)
+                        weightableLayer->_biases = convertFp16(weightableLayer->_biases);
+                }
+            }
+
             ieNode->connect(ld.inputBlobsWrappers, ld.outputBlobsWrappers);
             net->addBlobs(ld.inputBlobsWrappers);
             net->addBlobs(ld.outputBlobsWrappers);
