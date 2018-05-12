@@ -66,6 +66,7 @@ public:
         // Create two networks - with default backend and target and a tested one.
         Net netDefault = readNet(weights, proto);
         Net net = readNet(weights, proto);
+        // Net net = readNet("/home/dkurtaev/mo_out_py/bvlc_alexnet.xml", "/home/dkurtaev/mo_out_py/bvlc_alexnet.bin");
 
         netDefault.setInput(inp);
         Mat outDefault = netDefault.forward(outputLayer).clone();
@@ -80,10 +81,7 @@ public:
         }
         Mat out = net.forward(outputLayer).clone();
 
-        if (outputLayer == "detection_out")
-            normAssertDetections(outDefault, out, "First run", 0.2, l1, lInf);
-        else
-            normAssert(outDefault, out, "First run", l1, lInf);
+        check(outDefault, out, outputLayer, l1, lInf, "First run");
 
         // Test 2: change input.
         float* inpData = (float*)inp.data;
@@ -98,19 +96,40 @@ public:
         outDefault = netDefault.forward(outputLayer).clone();
         out = net.forward(outputLayer).clone();
 
-        if (outputLayer == "detection_out")
-            normAssertDetections(outDefault, out, "Second run", 0.2, l1, lInf);
-        else
-            normAssert(outDefault, out, "Second run", l1, lInf);
+        check(outDefault, out, outputLayer, l1, lInf, "Second run");
     }
+
+    void check(Mat& ref, Mat& out, const std::string& outputLayer, double l1, double lInf, const char* msg)
+    {
+        if (outputLayer == "detection_out")
+        {
+            if (backend == DNN_BACKEND_INFERENCE_ENGINE)
+            {
+                out = out.reshape(1, out.total() / 7);
+                std::cout << out << std::endl;
+                int numDetections = 0;
+                float* outData = (float*)out.data;
+                while (outData[0] != -1 && numDetections < out.rows)
+                {
+                    numDetections += 1;
+                    outData += 7;
+                }
+                out = out.rowRange(0, numDetections);
+            }
+            normAssertDetections(ref, out, msg, 0.2, l1, lInf);
+        }
+        else
+            normAssert(ref, out, msg, l1, lInf);
+    }
+
 };
 
 TEST_P(DNNTestNetwork, AlexNet)
 {
-    if (backend == DNN_BACKEND_INFERENCE_ENGINE && target != DNN_TARGET_CPU)
-        throw SkipTestException("");
+    // if (backend == DNN_BACKEND_INFERENCE_ENGINE && target != DNN_TARGET_CPU)
+    //     throw SkipTestException("");
     processNet("dnn/bvlc_alexnet.caffemodel", "dnn/bvlc_alexnet.prototxt",
-               Size(227, 227), "prob",
+               Size(227, 227), "",
                target == DNN_TARGET_OPENCL ? "dnn/halide_scheduler_opencl_alexnet.yml" :
                                              "dnn/halide_scheduler_alexnet.yml");
 }
@@ -220,9 +239,9 @@ TEST_P(DNNTestNetwork, OpenFace)
 
 TEST_P(DNNTestNetwork, opencv_face_detector)
 {
-    if (backend == DNN_BACKEND_HALIDE ||
-        backend == DNN_BACKEND_INFERENCE_ENGINE && target != DNN_TARGET_CPU)
-        throw SkipTestException("");
+    // if (backend == DNN_BACKEND_HALIDE ||
+    //     backend == DNN_BACKEND_INFERENCE_ENGINE && target != DNN_TARGET_CPU)
+    //     throw SkipTestException("");
     Mat img = imread(findDataFile("gpu/lbpcascade/er.png", false));
     Mat inp = blobFromImage(img, 1.0, Size(), Scalar(104.0, 177.0, 123.0), false, false);
     processNet("dnn/opencv_face_detector.caffemodel", "dnn/opencv_face_detector.prototxt",

@@ -59,19 +59,24 @@ infEngineWrappers(const std::vector<Ptr<BackendWrapper> >& ptrs)
     return wrappers;
 }
 
+static InferenceEngine::Layout estimateLayout(const Mat& m)
+{
+    if (m.dims == 4)
+        return InferenceEngine::Layout::NCHW;
+    else if (m.dims == 2)
+        return InferenceEngine::Layout::NC;
+    else
+        return InferenceEngine::Layout::ANY;
+}
+
 static InferenceEngine::DataPtr wrapToInfEngineDataNode(const Mat& m, const std::string& name = "")
 {
     std::vector<size_t> reversedShape(&m.size[0], &m.size[0] + m.dims);
     std::reverse(reversedShape.begin(), reversedShape.end());
     if (infEngineVersion() > 5855)
     {
-        InferenceEngine::Layout l = InferenceEngine::Layout::ANY;
-        if (m.dims == 4)
-            l = InferenceEngine::Layout::NCHW;
-        else if (m.dims == 2)
-            l = InferenceEngine::Layout::NC;
         return InferenceEngine::DataPtr(
-            new InferenceEngine::Data(name, reversedShape, InferenceEngine::Precision::FP32, l)
+            new InferenceEngine::Data(name, reversedShape, InferenceEngine::Precision::FP32, estimateLayout(m))
         );
     }
     else
@@ -108,7 +113,7 @@ InfEngineBackendWrapper::InfEngineBackendWrapper(int targetId, const cv::Mat& m)
     : BackendWrapper(DNN_BACKEND_INFERENCE_ENGINE, targetId)
 {
     dataPtr = wrapToInfEngineDataNode(m);
-    blob = wrapToInfEngineBlob(m);
+    blob = wrapToInfEngineBlob(m, estimateLayout(m));
 }
 
 InfEngineBackendWrapper::~InfEngineBackendWrapper()
@@ -248,7 +253,7 @@ InfEngineBackendNet::getLayerByName(const char *layerName, InferenceEngine::CNNL
 void InfEngineBackendNet::setTargetDevice(InferenceEngine::TargetDevice device) noexcept
 {
     if (device != InferenceEngine::TargetDevice::eCPU &&
-        device != InferenceEngine::TargetDevice::eGPU)
+        device != InferenceEngine::TargetDevice::eMYRIAD)
         CV_Error(Error::StsNotImplemented, "");
     targetDevice = device;
 }
@@ -347,7 +352,7 @@ void InfEngineBackendNet::init(int targetId)
     {
     case DNN_TARGET_CPU: setTargetDevice(InferenceEngine::TargetDevice::eCPU); break;
     case DNN_TARGET_OPENCL_FP16: setPrecision(InferenceEngine::Precision::FP16);  // Fallback to the next.
-    case DNN_TARGET_OPENCL: setTargetDevice(InferenceEngine::TargetDevice::eGPU); break;
+    case DNN_TARGET_OPENCL: setTargetDevice(InferenceEngine::TargetDevice::eMYRIAD); break;
     default:
         CV_Error(Error::StsError, format("Unknown target identifier: %d", targetId));
     }
