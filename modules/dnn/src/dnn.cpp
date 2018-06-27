@@ -1187,6 +1187,7 @@ struct Net::Impl
             Ptr<Layer> layer = ld.layerInstance;
             if (!layer->supportBackend(preferableBackend))
             {
+                std::cout << ld.type << '\n';
                 addInfEngineNetOutputs(ld);
                 net = Ptr<InfEngineBackendNet>();
                 netBlobsWrappers.clear();

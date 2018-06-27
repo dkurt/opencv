@@ -329,6 +329,7 @@ void InfEngineBackendNet::init(int targetId)
     {
         CV_Assert(allBlobs.find(it.first) != allBlobs.end());
         inpBlobs[it.first] = allBlobs[it.first];
+        std::cout << "inp: " << it.first << '\n';
     }
 
     // Set up output blobs.
@@ -337,6 +338,7 @@ void InfEngineBackendNet::init(int targetId)
     {
         CV_Assert(allBlobs.find(it.first) != allBlobs.end());
         outBlobs[it.first] = allBlobs[it.first];
+        std::cout << "out: " << it.first << '\n';
     }
 
     switch (targetId)

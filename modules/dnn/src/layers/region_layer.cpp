@@ -41,9 +41,9 @@
 //M*/
 
 #include "../precomp.hpp"
+#include "../op_inf_engine.hpp"
 #include <opencv2/dnn/shape_utils.hpp>
 #include <opencv2/dnn/all_layers.hpp>
-#include "../nms.inl.hpp"
 
 #ifdef HAVE_OPENCL
 #include "opencl_kernels_dnn.hpp"
@@ -58,7 +58,7 @@ class RegionLayerImpl CV_FINAL : public RegionLayer
 {
 public:
     int coords, classes, anchors, classfix;
-    float thresh, nmsThreshold;
+    float thresh;
     bool useSoftmax, useLogistic;
 
     RegionLayerImpl(const LayerParams& params)
@@ -73,9 +73,7 @@ public:
         classfix = params.get<int>("classfix", 0);
         useSoftmax = params.get<bool>("softmax", false);
         useLogistic = params.get<bool>("logistic", false);
-        nmsThreshold = params.get<float>("nms_threshold", 0.4);
 
-        CV_Assert(nmsThreshold >= 0.);
         CV_Assert(coords == 4);
         CV_Assert(classes >= 1);
         CV_Assert(anchors >= 1);
@@ -93,6 +91,11 @@ public:
         CV_Assert(inputs[0][3] == (1 + coords + classes)*anchors);
         outputs = std::vector<MatShape>(1, shape(inputs[0][1] * inputs[0][2] * anchors, inputs[0][3] / anchors));
         return false;
+    }
+
+    virtual bool supportBackend(int backendId) CV_OVERRIDE
+    {
+        return backendId == DNN_BACKEND_OPENCV || backendId == DNN_BACKEND_INFERENCE_ENGINE;
     }
 
     float logistic_activate(float x) { return 1.F / (1.F + exp(-x)); }
@@ -168,11 +171,10 @@ public:
                 if (!softmax_kernel.run(1, &nthreads, NULL, false))
                     return false;
             }
-
-            if (nmsThreshold > 0) {
+            if (thresh > 0) {
                 Mat mat = outBlob.getMat(ACCESS_WRITE);
                 float *dstData = mat.ptr<float>();
-                do_nms_sort(dstData, rows*cols*anchors, thresh, nmsThreshold);
+                filter_scores(dstData, rows*cols*anchors, thresh);
             }
 
         }
@@ -204,6 +206,9 @@ public:
 
         const float* biasData = blobs[0].ptr<float>();
 
+        // std::cout << inputs.size() << " " << outputs.size() << '\n';
+        // for (int i = 0; i < inputs.size(); ++i)
+        // std::cout << inputs[i]->size << '\n';
         for (size_t ii = 0; ii < outputs.size(); ii++)
         {
             Mat &inpBlob = *inputs[ii];
@@ -263,50 +268,43 @@ public:
                             dstData[class_index + j] = (prob > thresh) ? prob : 0;  // if (IoU < threshold) IoU = 0;
                         }
                     }
-            if (nmsThreshold > 0) {
-                do_nms_sort(dstData, rows*cols*anchors, thresh, nmsThreshold);
+            if (thresh > 0) {
+                filter_scores(dstData, rows*cols*anchors, thresh);
             }
         }
     }
 
-    static inline float rectOverlap(const Rect2f& a, const Rect2f& b)
+    void filter_scores(float *detections, int total, float score_thresh)
     {
-        return 1.0f - jaccardDistance(a, b);
-    }
-
-    void do_nms_sort(float *detections, int total, float score_thresh, float nms_thresh)
-    {
-        std::vector<Rect2f> boxes(total);
         std::vector<float> scores(total);
-
-        for (int i = 0; i < total; ++i)
-        {
-            Rect2f &b = boxes[i];
-            int box_index = i * (classes + coords + 1);
-            b.width = detections[box_index + 2];
-            b.height = detections[box_index + 3];
-            b.x = detections[box_index + 0] - b.width / 2;
-            b.y = detections[box_index + 1] - b.height / 2;
-        }
-
-        std::vector<int> indices;
         for (int k = 0; k < classes; ++k)
         {
             for (int i = 0; i < total; ++i)
             {
                 int box_index = i * (classes + coords + 1);
                 int class_index = box_index + 5;
-                scores[i] = detections[class_index + k];
-                detections[class_index + k] = 0;
-            }
-            NMSFast_(boxes, scores, score_thresh, nms_thresh, 1, 0, indices, rectOverlap);
-            for (int i = 0, n = indices.size(); i < n; ++i)
-            {
-                int box_index = indices[i] * (classes + coords + 1);
-                int class_index = box_index + 5;
-                detections[class_index + k] = scores[indices[i]];
+                float score = detections[class_index + k];
+                scores[i] = score > score_thresh ? score : 0.0f;
             }
         }
+    }
+
+    virtual Ptr<BackendNode> initInfEngine(const std::vector<Ptr<BackendWrapper> >&) CV_OVERRIDE
+    {
+#ifdef HAVE_INF_ENGINE
+        InferenceEngine::LayerParams lp;
+        lp.name = name;
+        lp.type = "RegionYolo";
+        lp.precision = InferenceEngine::Precision::FP32;
+        std::shared_ptr<InferenceEngine::CNNLayer> ieLayer(new InferenceEngine::CNNLayer(lp));
+
+        ieLayer->params["classes"] = format("%d", classes);
+        ieLayer->params["coords"] = format("%d", coords);
+        ieLayer->params["num"] = format("%d", anchors);
+        ieLayer->params["do_softmax"] = useSoftmax ? "1" : "0";
+        return Ptr<BackendNode>(new InfEngineBackendNode(ieLayer));
+#endif  // HAVE_INF_ENGINE
+        return Ptr<BackendNode>();
     }
 
     virtual int64 getFLOPS(const std::vector<MatShape> &inputs,

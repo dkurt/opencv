@@ -74,6 +74,7 @@ static void testDarknetModel(const std::string& cfg, const std::string& weights,
                              int backendId, int targetId, float scoreDiff = 0.0,
                              float iouDiff = 0.0, float confThreshold = 0.24)
 {
+    static const float kNMSThresh = 0.4f;
     if (backendId == DNN_BACKEND_OPENCV && targetId == DNN_TARGET_OPENCL)
     {
   #ifdef HAVE_OPENCL
@@ -125,6 +126,21 @@ static void testDarknetModel(const std::string& cfg, const std::string& weights,
             classIds.push_back(maxLoc.x);
         }
     }
+    std::vector<int> indices;
+    NMSBoxes(boxes, confidences, /*confThreshold*/0.0, kNMSThresh, indices);
+
+    // Remove boxes.
+    indices.push_back(-1);  // Fake index to remove the beginning.
+    std::sort(indices.begin(), indices.end(), std::greater<int>());
+    for (int i = 0; i < indices.size(); ++i)
+    {
+        classIds.erase(classIds.begin() + indices[i] + 1, classIds.end() - i);
+        confidences.erase(confidences.begin() + indices[i] + 1, confidences.end() - i);
+        boxes.erase(boxes.begin() + indices[i] + 1, boxes.end() - i);
+    }
+    CV_Assert(classIds.size() == indices.size() - 1);
+    CV_Assert(confidences.size() == indices.size() - 1);
+    CV_Assert(boxes.size() == indices.size() - 1);
     normAssertDetections(refClassIds, refConfidences, refBoxes, classIds,
                          confidences, boxes, "", confThreshold, scoreDiff, iouDiff);
 }
@@ -169,8 +185,6 @@ TEST_P(Test_Darknet_nets, YOLOv3)
 {
     int backendId = get<0>(GetParam());
     int targetId = get<1>(GetParam());
-    if (backendId == DNN_BACKEND_INFERENCE_ENGINE && targetId == DNN_TARGET_MYRIAD)
-        throw SkipTestException("");
     std::vector<cv::String> outNames(3);
     outNames[0] = "yolo_82";
     outNames[1] = "yolo_94";
