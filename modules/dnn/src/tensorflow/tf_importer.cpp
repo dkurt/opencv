@@ -430,10 +430,29 @@ private:
 
 TFImporter::TFImporter(const char *model, const char *config)
 {
+    // google::protobuf::RepeatedPtrField<tensorflow::NodeDef>::iterator it;
+    // for (it = netBin.mutable_node()->begin(); it != netBin.mutable_node()->end();)
+    // {
+    //     if (it->op() == "Const")
+    //         it = netBin.mutable_node()->erase(it);
+    //     else
+    //         ++it;
+    // }
+    //
+    // std::string output;
+    // google::protobuf::TextFormat::PrintToString(netBin, &output);
+    //
+    // std::ofstream ofs("graph.pbtxt");
+    // ofs << output;
+    // ofs.close();
+
     if (model && model[0])
         ReadTFNetParamsFromBinaryFileOrDie(model, &netBin);
     if (config && config[0])
-        ReadTFNetParamsFromTextFileOrDie(config, &netTxt);
+    {
+        if (!simplifyNetFromObjectDetectionAPI(config, &netBin))
+            ReadTFNetParamsFromTextFileOrDie(config, &netTxt);
+    }
 }
 
 TFImporter::TFImporter(const char *dataModel, size_t lenModel,

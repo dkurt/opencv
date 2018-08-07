@@ -314,6 +314,52 @@ TEST_P(Test_TensorFlow_nets, Inception_v2_SSD)
     normAssertDetections(ref, out, "", 0.5, scoreDiff, iouDiff);
 }
 
+TEST_P(Test_TensorFlow_nets, MobileNet_v1_SSD_config)
+{
+    checkBackend();
+
+    std::ofstream config("ssd_mobilenet_v1_coco_2017_11_17.config");
+    // This is a part of training config file
+    // https://github.com/tensorflow/models/blob/master/research/object_detection/samples/configs/ssd_mobilenet_v1_coco.config
+    config <<
+        "model { ssd {"
+        "  num_classes: 90"
+        "  anchor_generator { ssd_anchor_generator {"
+        "    num_layers: 6"
+        "    min_scale: 0.2"
+        "    max_scale: 0.95"
+        "    aspect_ratios: 1.0"
+        "    aspect_ratios: 2.0"
+        "    aspect_ratios: 0.5"
+        "    aspect_ratios: 3.0"
+        "    aspect_ratios: 0.3333"
+        "  }}"
+        "  image_resizer { fixed_shape_resizer { height: 300 width: 300 } }"
+        "  post_processing { batch_non_max_suppression {"
+        "      score_threshold: 1e-8"
+        "      iou_threshold: 0.6"
+        "  }}"
+        "}}";
+    config.close();
+
+    std::string model = findDataFile("dnn/ssd_mobilenet_v1_coco_2017_11_17.pb", false);
+
+    Net net = readNetFromTensorflow(model, "ssd_mobilenet_v1_coco_2017_11_17.config");
+    Mat img = imread(findDataFile("dnn/dog416.png", false));
+    Mat blob = blobFromImage(img, 1.0f / 127.5, Size(300, 300), Scalar(127.5, 127.5, 127.5), true, false);
+
+    net.setPreferableBackend(backend);
+    net.setPreferableTarget(target);
+
+    net.setInput(blob);
+    Mat out = net.forward();
+
+    Mat ref = blobFromNPY(findDataFile("dnn/tensorflow/ssd_mobilenet_v1_coco_2017_11_17.detection_out.npy"));
+    float scoreDiff = (target == DNN_TARGET_OPENCL_FP16 || target == DNN_TARGET_MYRIAD) ? 7e-3 : 1e-5;
+    float iouDiff = (target == DNN_TARGET_OPENCL_FP16 || target == DNN_TARGET_MYRIAD) ? 6e-3 : 1e-3;
+    normAssertDetections(ref, out, "", 0.3, scoreDiff, iouDiff);
+}
+
 TEST_P(Test_TensorFlow_nets, Inception_v2_Faster_RCNN)
 {
     checkBackend();
@@ -340,10 +386,35 @@ TEST_P(Test_TensorFlow_nets, Inception_v2_Faster_RCNN)
 TEST_P(Test_TensorFlow_nets, MobileNet_v1_SSD_PPN)
 {
     checkBackend();
-    std::string proto = findDataFile("dnn/ssd_mobilenet_v1_ppn_coco.pbtxt", false);
+
+    std::ofstream config("ssd_mobilenet_v1_ppn_coco.config");
+    // This is a part of training config file
+    // https://github.com/tensorflow/models/blob/master/research/object_detection/samples/configs/ssd_mobilenet_v1_ppn_shared_box_predictor_300x300_coco14_sync.config
+    config <<
+        "model { ssd {"
+        "  num_classes: 90"
+        "  anchor_generator { ssd_anchor_generator {"
+        "    num_layers: 6"
+        "    min_scale: 0.15"
+        "    max_scale: 0.95"
+        "    aspect_ratios: 1.0"
+        "    aspect_ratios: 2.0"
+        "    aspect_ratios: 0.5"
+        "    aspect_ratios: 3.0"
+        "    aspect_ratios: 0.3333"
+        "    reduce_boxes_in_lowest_layer: false"
+        "  }}"
+        "  image_resizer { fixed_shape_resizer { height: 300 width: 300 } }"
+        "  post_processing { batch_non_max_suppression {"
+        "      score_threshold: 1e-8"
+        "      iou_threshold: 0.6"
+        "  }}"
+        "}}";
+    config.close();
+
     std::string model = findDataFile("dnn/ssd_mobilenet_v1_ppn_coco.pb", false);
 
-    Net net = readNetFromTensorflow(model, proto);
+    Net net = readNetFromTensorflow(model, "ssd_mobilenet_v1_ppn_coco.config");
     Mat img = imread(findDataFile("dnn/dog416.png", false));
     Mat ref = blobFromNPY(findDataFile("dnn/tensorflow/ssd_mobilenet_v1_ppn_coco.detection_out.npy", false));
     Mat blob = blobFromImage(img, 1.0f / 127.5, Size(300, 300), Scalar(127.5, 127.5, 127.5), true, false);

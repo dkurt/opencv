@@ -16,6 +16,11 @@ from tensorflow.core.framework.node_def_pb2 import NodeDef
 from tensorflow.tools.graph_transforms import TransformGraph
 from google.protobuf import text_format
 from tf_text_graph_common import tensorMsg, addConstNode
+import warnings
+
+warnings.warn("""
+This script is deprecated. Please use a *.config file which is used for training as an additional argument of cv::dnn::readNetFromTensorflow
+""")
 
 parser = argparse.ArgumentParser(description='Run this script to get a text graph of '
                                              'SSD model from TensorFlow Object Detection API. '
