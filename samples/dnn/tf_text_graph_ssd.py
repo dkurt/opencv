@@ -15,7 +15,7 @@ from math import sqrt
 from tensorflow.core.framework.node_def_pb2 import NodeDef
 from tensorflow.tools.graph_transforms import TransformGraph
 from google.protobuf import text_format
-from tf_text_graph_common import tensorMsg, addConstNode
+from tf_text_graph_common import tensorMsg, addConstNode, readTextMessage
 import warnings
 
 warnings.warn("""
@@ -41,6 +41,9 @@ parser.add_argument('--not_reduce_boxes_in_lowest_layer', default=False, action=
 parser.add_argument('--box_predictor', default='convolutional', type=str,
                     choices=['convolutional', 'weight_shared_convolutional'])
 args = parser.parse_args()
+
+tm = readTextMessage('/home/dkurt/opencv_extra/testdata/dnn/ssd_mobilenet_v1_coco_2017_11_17.config')
+print tm
 
 # Nodes that should be kept.
 keepOps = ['Conv2D', 'BiasAdd', 'Add', 'Relu6', 'Placeholder', 'FusedBatchNorm',

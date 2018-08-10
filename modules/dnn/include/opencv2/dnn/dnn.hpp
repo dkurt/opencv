@@ -885,6 +885,8 @@ CV__DNN_EXPERIMENTAL_NS_BEGIN
     CV_EXPORTS_W void shrinkCaffeModel(const String& src, const String& dst,
                                        const std::vector<String>& layersTypes = std::vector<String>());
 
+    CV_EXPORTS_W void writeTextGraph(const String& model, const String& output);
+
     /** @brief Performs non maximum suppression given boxes and corresponding scores.
 
      * @param bboxes a set of bounding boxes to apply NMS.

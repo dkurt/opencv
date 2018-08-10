@@ -46,7 +46,7 @@ static void tokenize(const std::string& str, std::vector<std::string>& tokens)
             }
             isString = (symbol == '\"' || symbol == '\'') ^ isString;
         }
-        else if (symbol == '{' || symbol == '}')
+        else if (symbol == '{' || symbol == '}' || symbol == '[' || symbol == ']')
         {
             if (!token.empty())
             {
@@ -175,19 +175,27 @@ static Ptr<TextMessage> parseTextMessage(std::vector<std::string>::iterator& tok
     CV_Assert(*tokenIt == "{");
 
     std::string fieldName, fieldValue;
+    bool isArray = false;
     for (;;)
     {
-        ++tokenIt;
-        fieldName = *tokenIt;
+        if (!isArray)
+        {
+            ++tokenIt;
+            fieldName = *tokenIt;
 
-        if (fieldName == "}")
-            break;
+            if (fieldName == "}")
+                break;
+        }
 
         ++tokenIt;
         fieldValue = *tokenIt;
 
         if (fieldValue == "{")
             msg->messages.insert(std::make_pair(fieldName, parseTextMessage(tokenIt)));
+        else if (fieldValue == "[")
+            isArray = true;
+        else if (fieldValue == "]")
+            isArray = false;
         else
         {
             std::map<std::string, std::vector<std::string> >::iterator it = msg->fields.find(fieldName);
@@ -259,6 +267,19 @@ static void addConcatNode(const std::string& name,
     node->add_input(axisNodeName);
 }
 
+static void addReshapeNode(const std::string& name, const std::string& input,
+                           const std::vector<int>& newShape,
+                           tensorflow::GraphDef& net)
+{
+    addConstNode(name + "/shape", newShape, net);
+
+    tensorflow::NodeDef* reshape = net.add_node();
+    reshape->set_name(name);
+    reshape->set_op("Reshape");
+    reshape->add_input(input);
+    reshape->add_input(name + "/shape");
+}
+
 template <typename T>
 static void addAttr(const std::string& name, T value, tensorflow::NodeDef* node)
 {
@@ -297,19 +318,59 @@ static void addAttr(const std::string& name, const std::vector<T>& values,
     node->mutable_attr()->insert(MapPair<std::string, tensorflow::AttrValue>(name, attr));
 }
 
-static void getUnconnectedNodes(const tensorflow::GraphDef& net,
-                                std::vector<std::string>& names)
+static void addSoftmaxNode(const std::string& name, const std::string& input,
+                           tensorflow::GraphDef& net)
 {
-    names.clear();
-    for (int i = 0; i < net.node_size(); ++i)
-    {
-        const tensorflow::NodeDef& node = net.node(i);
-        names.push_back(node.name());
-        for (int j = 0; j < node.input_size(); ++j)
-        {
-            names.erase(std::remove(names.begin(), names.end(), node.input(j)), names.end());
-        }
-    }
+    tensorflow::NodeDef* node = net.add_node();
+    node->set_name(name);
+    node->set_op("Softmax");
+    addAttr("axis", -1, node);
+    node->add_input(input);
+}
+
+def addSlice(inp, out, begins, sizes):
+    beginsNode = NodeDef()
+    beginsNode.name = out + '/begins'
+    beginsNode.op = 'Const'
+    text_format.Merge(tensorMsg(begins), beginsNode.attr["value"])
+    graph_def.node.extend([beginsNode])
+
+    sizesNode = NodeDef()
+    sizesNode.name = out + '/sizes'
+    sizesNode.op = 'Const'
+    text_format.Merge(tensorMsg(sizes), sizesNode.attr["value"])
+    graph_def.node.extend([sizesNode])
+
+    sliced = NodeDef()
+    sliced.name = out
+    sliced.op = 'Slice'
+    sliced.input.append(inp)
+    sliced.input.append(beginsNode.name)
+    sliced.input.append(sizesNode.name)
+    graph_def.node.extend([sliced])
+
+
+static void addDetectionOutputNode(const std::string& name, const std::string& inpBoxes,
+                                   const std::string& inpScores, const std::string& inpPriors,
+                                   int numClasses, float nmsThresh, float scoreThresh,
+                                   int top_k, tensorflow::GraphDef& net)
+{
+    tensorflow::NodeDef* node = net.add_node();
+    node->set_name("detection_out");
+    node->set_op("DetectionOutput");
+
+    node->add_input(inpBoxes);
+    node->add_input(inpScores);
+    node->add_input(inpPriors);
+
+    addAttr<int>("num_classes", numClasses, node);
+    addAttr<bool>("share_location", true, node);
+    addAttr<int>("background_label_id", 0, node);
+    addAttr<float>("nms_threshold", nmsThresh, node);
+    addAttr<int>("top_k", top_k, node);
+    addAttr<std::string>("code_type", "CENTER_SIZE", node);
+    addAttr<int>("keep_top_k", 100, node);
+    addAttr<float>("confidence_threshold", scoreThresh, node);
 }
 
 static tensorflow::NodeDef* addNode(const std::string& type, const std::string& name,
@@ -322,285 +383,468 @@ static tensorflow::NodeDef* addNode(const std::string& type, const std::string& 
     return node;
 }
 
-static void simplifySSD(tensorflow::GraphDef& net, const TextMessageNode& config)
+class ObjectDetectionSimplifier
 {
-    const int numClasses = config["num_classes"];
-    TextMessageNode ssdAnchorGenerator = config["anchor_generator"]["ssd_anchor_generator"];
-    const float minScale = ssdAnchorGenerator["min_scale"];
-    const float maxScale = ssdAnchorGenerator["max_scale"];
-    const int numLayers = ssdAnchorGenerator["num_layers"];
-    const int imgWidth = config["image_resizer"]["fixed_shape_resizer"]["width"];
-    const int imgHeight = config["image_resizer"]["fixed_shape_resizer"]["height"];
-    TextMessageNode aspectRatios = ssdAnchorGenerator["aspect_ratios"];
-    const float scoreThresh = config["post_processing"]["batch_non_max_suppression"]["score_threshold"];
-    const float iouThresh = config["post_processing"]["batch_non_max_suppression"]["iou_threshold"];
+protected:
+    virtual bool toRemove(const tensorflow::NodeDef& node) = 0;
 
-    bool reduceBoxesInLowestLayer = true;
-    if (ssdAnchorGenerator.has("reduce_boxes_in_lowest_layer"))
-        reduceBoxesInLowestLayer = (bool)ssdAnchorGenerator["reduce_boxes_in_lowest_layer"];
+    virtual void process(tensorflow::GraphDef& net, const TextMessageNode& config) = 0;
 
-    sortByExecutionOrder(net);
-
-    std::vector<std::string> boxesPredictionNodes;
-    std::vector<std::string> classPredictionNodes;
-
-    std::map<std::string, tensorflow::NodeDef*> nodesMap;
-    std::map<std::string, tensorflow::NodeDef*>::iterator nodesMapIt;
-    for (int i = 0; i < net.node_size(); ++i)
+    // Remove unused nodes.
+    void removeUnusedNodes(tensorflow::GraphDef& net)
     {
-        tensorflow::NodeDef* node = net.mutable_node(i);
-        std::string nodeName = node->name();
-        nodesMap[nodeName] = node;
-
-        std::vector<std::string>* dst = 0;
-        if (nodeName == "concat")
-            dst = &boxesPredictionNodes;
-        else if (nodeName == "concat_1")
-            dst = &classPredictionNodes;
-
-        if (dst)
+        std::vector<std::string> removedNodes;
+        RepeatedPtrField<tensorflow::NodeDef>::iterator it;
+        google::protobuf::Map<std::string, tensorflow::AttrValue>::iterator attrIt;
+        for (it = net.mutable_node()->begin(); it != net.mutable_node()->end();)
         {
-            CV_Assert(node->input_size() == numLayers + 1);  // inputs and axis
-            for (int j = 0; j < numLayers; ++j)
+            tensorflow::NodeDef& layer = *it;
+            std::string op = layer.op();
+            std::string name = layer.name();
+
+            if (toRemove(layer))
             {
-                nodesMapIt = nodesMap.find(node->input(j));
-                CV_Assert(nodesMapIt != nodesMap.end());
-                tensorflow::NodeDef* inpNode = nodesMapIt->second;
-                while (inpNode->op() == "Reshape" || inpNode->op() == "Squeeze")
-                {
-                    nodesMapIt = nodesMap.find(inpNode->input(0));
-                    CV_Assert(nodesMapIt != nodesMap.end());
-                    inpNode = nodesMapIt->second;
-                }
-                dst->push_back(inpNode->name().substr(0, inpNode->name().rfind('/')));
+                removedNodes.push_back(name);
+                it = net.mutable_node()->erase(it);
+            }
+            else
+                ++it;
+        }
+
+        // Remove references to removed nodes.
+        RepeatedPtrField<std::string>::iterator inputIt;
+        for (it = net.mutable_node()->begin(); it != net.mutable_node()->end(); ++it)
+        {
+            tensorflow::NodeDef& layer = *it;
+            for (inputIt = layer.mutable_input()->begin(); inputIt != layer.mutable_input()->end();)
+            {
+                if (std::find(removedNodes.begin(), removedNodes.end(), *inputIt) != removedNodes.end())
+                    inputIt = layer.mutable_input()->erase(inputIt);
+                else
+                    ++inputIt;
             }
         }
     }
-    CV_Assert(boxesPredictionNodes.size() == numLayers);
-    CV_Assert(classPredictionNodes.size() == numLayers);
 
-    simplifySubgraphs(net);
-    RemoveIdentityOps(net);
-
-    // Remove extra nodes and attributes.
-    std::vector<std::string> removedNodes, keepOps, unusedAttrs;
-
-    keepOps.push_back("Conv2D");
-    keepOps.push_back("BiasAdd");
-    keepOps.push_back("Add");
-    keepOps.push_back("Relu6");
-    keepOps.push_back("Placeholder");
-    keepOps.push_back("FusedBatchNorm");
-    keepOps.push_back("DepthwiseConv2dNative");
-    keepOps.push_back("ConcatV2");
-    keepOps.push_back("Mul");
-    keepOps.push_back("MaxPool");
-    keepOps.push_back("AvgPool");
-    keepOps.push_back("Identity");
-    keepOps.push_back("Const");
-
-    unusedAttrs.push_back("T");
-    unusedAttrs.push_back("data_format");
-    unusedAttrs.push_back("Tshape");
-    unusedAttrs.push_back("N");
-    unusedAttrs.push_back("Tidx");
-    unusedAttrs.push_back("Tdim");
-    unusedAttrs.push_back("use_cudnn_on_gpu");
-    unusedAttrs.push_back("Index");
-    unusedAttrs.push_back("Tperm");
-    unusedAttrs.push_back("is_training");
-    unusedAttrs.push_back("Tpaddings");
-
-    // Remove unused nodes and attributes.
-    RepeatedPtrField<tensorflow::NodeDef>::iterator it;
-    google::protobuf::Map<std::string, tensorflow::AttrValue>::iterator attrIt;
-    for (it = net.mutable_node()->begin(); it != net.mutable_node()->end();)
+    void removeUnconnectedNodes(tensorflow::GraphDef& net, const std::string& excludeName)
     {
-        tensorflow::NodeDef& layer = *it;
-        std::string op = layer.op();
-        std::string name = layer.name();
-
-        if (std::find(keepOps.begin(), keepOps.end(), op) == keepOps.end() ||
-            name.find("MultipleGridAnchorGenerator") == 0 ||
-            name.find("Postprocessor") == 0 ||
-            name.find("Preprocessor") == 0)
+        std::vector<std::string> unconnected;
+        RepeatedPtrField<tensorflow::NodeDef>::iterator it;
+        for (;;)
         {
-            removedNodes.push_back(name);
-            it = net.mutable_node()->erase(it);
-        }
-        else
-            ++it;
+            getUnconnectedNodes(net, unconnected);
+            unconnected.erase(std::remove(unconnected.begin(), unconnected.end(), excludeName),
+                              unconnected.end());
 
-        for (attrIt = layer.mutable_attr()->begin(); attrIt != layer.mutable_attr()->end();)
-        {
-            if (std::find(unusedAttrs.begin(), unusedAttrs.end(), attrIt->first) != unusedAttrs.end())
-                attrIt = layer.mutable_attr()->erase(attrIt);
-            else
-                ++attrIt;
+            if (unconnected.empty())
+                break;
+
+            for (int i = 0; i < unconnected.size(); ++i)
+            {
+                for (it = net.mutable_node()->begin(); it != net.mutable_node()->end(); ++it)
+                {
+                    if (it->name() == unconnected[i])
+                    {
+                        net.mutable_node()->erase(it);
+                        break;
+                    }
+                }
+            }
         }
     }
 
-    // Remove references to removed nodes.
-    RepeatedPtrField<std::string>::iterator inputIt;
-    for (it = net.mutable_node()->begin(); it != net.mutable_node()->end(); ++it)
+private:
+    static void getUnconnectedNodes(const tensorflow::GraphDef& net,
+                                    std::vector<std::string>& names)
     {
-        tensorflow::NodeDef& layer = *it;
-        for (inputIt = layer.mutable_input()->begin(); inputIt != layer.mutable_input()->end();)
+        names.clear();
+        for (int i = 0; i < net.node_size(); ++i)
         {
-            if (std::find(removedNodes.begin(), removedNodes.end(), *inputIt) != removedNodes.end())
-                inputIt = layer.mutable_input()->erase(inputIt);
-            else
-                ++inputIt;
+            const tensorflow::NodeDef& node = net.node(i);
+            names.push_back(node.name());
+            for (int j = 0; j < node.input_size(); ++j)
+            {
+                names.erase(std::remove(names.begin(), names.end(), node.input(j)), names.end());
+            }
         }
     }
+};
 
-    std::string netInputName;
-    for (int i = 0; i < net.node_size(); ++i)
+class FasterRCNNSimplifier CV_FINAL : public ObjectDetectionSimplifier
+{
+public:
+    FasterRCNNSimplifier()
     {
-        const tensorflow::NodeDef& node = net.node(i);
-        if (node.op() == "Placeholder")
+        scopesToKeep.push_back("FirstStageFeatureExtractor");
+        scopesToKeep.push_back("Conv");
+        scopesToKeep.push_back("FirstStageBoxPredictor/BoxEncodingPredictor");
+        scopesToKeep.push_back("FirstStageBoxPredictor/ClassPredictor");
+        scopesToKeep.push_back("CropAndResize");
+        scopesToKeep.push_back("MaxPool2D");
+        scopesToKeep.push_back("SecondStageFeatureExtractor");
+        scopesToKeep.push_back("SecondStageBoxPredictor");
+        scopesToKeep.push_back("image_tensor");
+
+        scopesToIgnore.push_back("FirstStageFeatureExtractor/Assert");
+        scopesToIgnore.push_back("FirstStageFeatureExtractor/Shape");
+        scopesToIgnore.push_back("FirstStageFeatureExtractor/strided_slice");
+        scopesToIgnore.push_back("FirstStageFeatureExtractor/GreaterEqual");
+        scopesToIgnore.push_back("FirstStageFeatureExtractor/LogicalAnd");
+    }
+
+    virtual void process(tensorflow::GraphDef& net, const TextMessageNode& config) CV_OVERRIDE
+    {
+        // TextMessageNode ssdAnchorGenerator = ;
+        TextMessageNode aspectRatios = config["first_stage_anchor_generator"]["grid_anchor_generator"]["aspect_ratios"];
+        TextMessageNode scales = config["first_stage_anchor_generator"]["grid_anchor_generator"]["scales"];
+
+        sortByExecutionOrder(net);
+        simplifySubgraphs(net);
+        RemoveIdentityOps(net);
+
+        removeUnusedNodes(net);
+
+        std::string netInputName;
+        for (int i = 0; i < net.node_size(); ++i)
         {
-            CV_Assert(i < net.node_size() - 1);
-            netInputName = node.name();
+            const tensorflow::NodeDef& node = net.node(i);
+            if (node.op() == "Placeholder")
+            {
+                CV_Assert(i < net.node_size() - 1);
+                netInputName = node.name();
 
-            tensorflow::NodeDef* consumer = net.mutable_node(i + 1);
-            std::string weights = consumer->input(0);  // Convolution weights
-            consumer->clear_input();
-            consumer->add_input(netInputName);
-            consumer->add_input(weights);
-            break;
+                tensorflow::NodeDef* consumer = 0;
+                for (int j = i + 1; j < net.node_size(); ++j)
+                {
+                    consumer = net.mutable_node(j);
+                    if (consumer->op() != "Const")
+                        break;
+                }
+                CV_Assert(consumer);
+
+                std::string weights = consumer->input(0);  // Convolution weights
+                consumer->clear_input();
+                consumer->add_input(netInputName);
+                consumer->add_input(weights);
+                break;
+            }
         }
-    }
-    CV_Assert(!netInputName.empty());
+        CV_Assert(!netInputName.empty());
 
-    // Create SSD postprocessing head.
-
-    addConstNode<int>("concat/axis_flatten", -1, net);
-    addConstNode<int>("PriorBox/concat/axis", -2, net);
-
-    for (int i = 0; i < 2; ++i)
-    {
-        std::string label = i == 0 ? "ClassPredictor" : "BoxEncodingPredictor";
-        std::vector<std::string> concatInputs = i == 0 ? classPredictionNodes : boxesPredictionNodes;
-        for (int j = 0; j < numLayers; ++j)
+        // Temporarily remove top nodes.
+        std::vector<tensorflow::NodeDef*> topNodes;
+        while (net.node_size())
         {
-            // Flatten predictions
-            std::string inpName = concatInputs[j] + "/BiasAdd";
-            tensorflow::NodeDef* flatten = addNode("Flatten", inpName + "/Flatten", inpName, net);
-            concatInputs[j] = flatten->name();
+            tensorflow::NodeDef* topNode = net.mutable_node()->ReleaseLast();
+            topNodes.push_back(topNode);
+            std::cout << topNode->name() << '\n';
+            if (topNode->op() == "CropAndResize")
+                break;
         }
-        addConcatNode(label + "/concat", concatInputs, "concat/axis_flatten", net);
-    }
 
-    for (int i = 0; i < numLayers; ++i)
-    {
-        nodesMapIt = nodesMap.find(boxesPredictionNodes[i] + "/Conv2D");
-        CV_Assert(nodesMapIt != nodesMap.end());
-        addAttr<bool>("loc_pred_transposed", true, nodesMapIt->second);
-    }
+        std::vector<int> shape(3);
+        shape[0] = 0; shape[1] = -1; shape[2] = 2;
+        addReshapeNode("FirstStageBoxPredictor/ClassPredictor/reshape_1",
+                       "FirstStageBoxPredictor/ClassPredictor/BiasAdd", shape, net);
+        addSoftmaxNode("FirstStageBoxPredictor/ClassPredictor/softmax",
+                       "FirstStageBoxPredictor/ClassPredictor/reshape_1", net);
+        addNode("Flatten", "FirstStageBoxPredictor/ClassPredictor/softmax/flatten",
+                "FirstStageBoxPredictor/ClassPredictor/softmax", net);
+        addNode("Flatten", "FirstStageBoxPredictor/BoxEncodingPredictor/flatten",
+                "FirstStageBoxPredictor/BoxEncodingPredictor/BiasAdd", net);
 
-    // Add layers that generate anchors (bounding boxes proposals).
-    std::vector<float> scales(1 + numLayers, 1.0f);
-    for (int i = 0; i < numLayers; ++i)
-    {
-        scales[i] = minScale + i * (maxScale - minScale) / (numLayers - 1);
-    }
-
-    std::vector<std::string> priorBoxesNames;
-
-    for (int i = 0; i < numLayers; ++i)
-    {
+        // Proposals generator.
         tensorflow::NodeDef* priorBox = net.add_node();
-        priorBox->set_name(cv::format("PriorBox_%d", i));
+        priorBox->set_name("proposals");  // Compare with ClipToWindow/Gather/Gather (NOTE: normalized)
         priorBox->set_op("PriorBox");
-        priorBox->add_input(boxesPredictionNodes[i] + "/BiasAdd");
+        priorBox->add_input("FirstStageBoxPredictor/BoxEncodingPredictor/BiasAdd");
         priorBox->add_input(netInputName);
 
         addAttr<bool>("flip", false, priorBox);
-        addAttr<bool>("clip", false, priorBox);
+        addAttr<bool>("clip", true, priorBox);
+        addAttr<float>("step", 16.0f, priorBox);
+        addAttr<float>("offset", 0.0f, priorBox);
 
         std::vector<float> widths, heights;
-        if (i == 0 && reduceBoxesInLowestLayer)
+        for (int i = 0; i < aspectRatios.size(); ++i)
         {
-            widths.push_back(0.1);
-            widths.push_back(minScale * sqrt(2.0f));
-            widths.push_back(minScale * sqrt(0.5f));
-
-            heights.push_back(0.1);
-            heights.push_back(minScale / sqrt(2.0f));
-            heights.push_back(minScale / sqrt(0.5f));
-        }
-        else
-        {
-            for (int j = 0; j < aspectRatios.size(); ++j)
+            float ar = std::sqrt((float)aspectRatios[i]);
+            float features_stride = 16;
+            float features_stride_sq = 16*16;
+            for (int j = 0; j < scales.size(); ++j)
             {
-                float ar = aspectRatios[j];
-                widths.push_back(scales[i] * sqrt(ar));
-                heights.push_back(scales[i] / sqrt(ar));
+                float s = scales[j];
+                heights.push_back(features_stride_sq * s / ar);
+                widths.push_back(features_stride_sq * s * ar);
             }
-            widths.push_back(sqrt(scales[i] * scales[i + 1]));
-            heights.push_back(sqrt(scales[i] * scales[i + 1]));
         }
-        for (int j = 0; j < widths.size(); ++j)
-        {
-            widths[j] *= imgWidth;
-            heights[j] *= imgHeight;
-        }
-
         addAttr("width", widths, priorBox);
         addAttr("height", heights, priorBox);
         std::vector<float> variance(4);
         variance[0] = variance[1] = 0.1;
         variance[2] = variance[3] = 0.2;
         addAttr("variance", variance, priorBox);
-        priorBoxesNames.push_back(priorBox->name());
-    }
-    addConcatNode("PriorBox/concat", priorBoxesNames, "concat/axis_flatten", net);
 
-    // Sigmoid for classes predictions and DetectionOutput layer
-    tensorflow::NodeDef* sigmoid = addNode("Sigmoid", "ClassPredictor/concat/sigmoid",
-                                           "ClassPredictor/concat", net);
+        addDetectionOutputNode("detection_out",
+                               "FirstStageBoxPredictor/BoxEncodingPredictor/flatten",
+                               "FirstStageBoxPredictor/ClassPredictor/softmax/flatten",
+                               "proposals", 2, 0.7, 0.0, 6000, net);
 
-    tensorflow::NodeDef* detectionOut = net.add_node();
-    detectionOut->set_name("detection_out");
-    detectionOut->set_op("DetectionOutput");
+        addConstNode<int>("clip_by_value/lower", 0.0, net);
+        addConstNode<int>("clip_by_value/upper", 1.0, net);
 
-    detectionOut->add_input("BoxEncodingPredictor/concat");
-    detectionOut->add_input(sigmoid->name());
-    detectionOut->add_input("PriorBox/concat");
+        tensorflow::NodeDef* clipByValueNode = net.add_node();
+        clipByValueNode->set_name("detection_out/clip_by_value");
+        clipByValueNode->set_op("ClipByValue");
+        clipByValueNode->add_input("detection_out");
+        clipByValueNode->add_input("clip_by_value/lower");
+        clipByValueNode->add_input("clip_by_value/upper");
 
-    addAttr<int>("num_classes", numClasses + 1, detectionOut);
-    addAttr<bool>("share_location", true, detectionOut);
-    addAttr<int>("background_label_id", 0, detectionOut);
-    addAttr<float>("nms_threshold", iouThresh, detectionOut);
-    addAttr<int>("top_k", 100, detectionOut);
-    addAttr<std::string>("code_type", "CENTER_SIZE", detectionOut);
-    addAttr<int>("keep_top_k", 100, detectionOut);
-    addAttr<float>("confidence_threshold", scoreThresh, detectionOut);
-
-    std::vector<std::string> unconnected;
-    for (;;)
-    {
-        getUnconnectedNodes(net, unconnected);
-        unconnected.erase(std::remove(unconnected.begin(), unconnected.end(), detectionOut->name()),
-                          unconnected.end());
-
-        if (unconnected.empty())
-            break;
-
-        for (int i = 0; i < unconnected.size(); ++i)
+        for (int i = topNodes.size() - 1; i >= 0; --i)
         {
-            for (it = net.mutable_node()->begin(); it != net.mutable_node()->end(); ++it)
+            net.mutable_node()->AddAllocated(topNodes[i]);
+        }
+
+        addSoftmaxNode("SecondStageBoxPredictor/Reshape_1/softmax",
+                       "SecondStageBoxPredictor/Reshape_1", net);
+
+        addSlice('SecondStageBoxPredictor/Reshape_1/softmax',
+                 'SecondStageBoxPredictor/Reshape_1/slice',
+                 [0, 0, 1], [-1, -1, -1])
+
+        addReshape('SecondStageBoxPredictor/Reshape_1/slice',
+                  'SecondStageBoxPredictor/Reshape_1/Reshape', [1, -1])
+    }
+
+private:
+    virtual bool toRemove(const tensorflow::NodeDef& node) CV_OVERRIDE
+    {
+        const std::string& name = node.name();
+        for (int i = 0; i < scopesToIgnore.size(); ++i)
+        {
+            if (name.find(scopesToIgnore[i]) == 0)
+                return true;
+        }
+
+        bool keep = false;
+        for (int i = 0; !keep && i < scopesToKeep.size(); ++i)
+        {
+            keep = name.find(scopesToKeep[i]) == 0;
+        }
+        return !keep;
+    }
+
+    std::vector<std::string> scopesToKeep, scopesToIgnore;
+};
+
+class SSDSimplifier CV_FINAL : public ObjectDetectionSimplifier
+{
+public:
+    SSDSimplifier()
+    {
+        keepOps.insert("Conv2D");
+        keepOps.insert("BiasAdd");
+        keepOps.insert("Add");
+        keepOps.insert("Relu6");
+        keepOps.insert("Placeholder");
+        keepOps.insert("FusedBatchNorm");
+        keepOps.insert("DepthwiseConv2dNative");
+        keepOps.insert("ConcatV2");
+        keepOps.insert("Mul");
+        keepOps.insert("MaxPool");
+        keepOps.insert("AvgPool");
+        keepOps.insert("Identity");
+        keepOps.insert("Const");
+    }
+
+    virtual void process(tensorflow::GraphDef& net, const TextMessageNode& config) CV_OVERRIDE
+    {
+        const int numClasses = config["num_classes"];
+        TextMessageNode ssdAnchorGenerator = config["anchor_generator"]["ssd_anchor_generator"];
+        const float minScale = ssdAnchorGenerator["min_scale"];
+        const float maxScale = ssdAnchorGenerator["max_scale"];
+        const int numLayers = ssdAnchorGenerator["num_layers"];
+        const int imgWidth = config["image_resizer"]["fixed_shape_resizer"]["width"];
+        const int imgHeight = config["image_resizer"]["fixed_shape_resizer"]["height"];
+        TextMessageNode aspectRatios = ssdAnchorGenerator["aspect_ratios"];
+        const float scoreThresh = config["post_processing"]["batch_non_max_suppression"]["score_threshold"];
+        const float iouThresh = config["post_processing"]["batch_non_max_suppression"]["iou_threshold"];
+
+        bool reduceBoxesInLowestLayer = true;
+        if (ssdAnchorGenerator.has("reduce_boxes_in_lowest_layer"))
+            reduceBoxesInLowestLayer = (bool)ssdAnchorGenerator["reduce_boxes_in_lowest_layer"];
+
+        sortByExecutionOrder(net);
+
+        std::vector<std::string> boxesPredictionNodes;
+        std::vector<std::string> classPredictionNodes;
+
+        std::map<std::string, tensorflow::NodeDef*> nodesMap;
+        std::map<std::string, tensorflow::NodeDef*>::iterator nodesMapIt;
+        for (int i = 0; i < net.node_size(); ++i)
+        {
+            tensorflow::NodeDef* node = net.mutable_node(i);
+            std::string nodeName = node->name();
+            nodesMap[nodeName] = node;
+
+            std::vector<std::string>* dst = 0;
+            if (nodeName == "concat")
+                dst = &boxesPredictionNodes;
+            else if (nodeName == "concat_1")
+                dst = &classPredictionNodes;
+
+            if (dst)
             {
-                if (it->name() == unconnected[i])
+                CV_Assert(node->input_size() == numLayers + 1);  // inputs and axis
+                for (int j = 0; j < numLayers; ++j)
                 {
-                    net.mutable_node()->erase(it);
-                    break;
+                    nodesMapIt = nodesMap.find(node->input(j));
+                    CV_Assert(nodesMapIt != nodesMap.end());
+                    tensorflow::NodeDef* inpNode = nodesMapIt->second;
+                    while (inpNode->op() == "Reshape" || inpNode->op() == "Squeeze")
+                    {
+                        nodesMapIt = nodesMap.find(inpNode->input(0));
+                        CV_Assert(nodesMapIt != nodesMap.end());
+                        inpNode = nodesMapIt->second;
+                    }
+                    dst->push_back(inpNode->name().substr(0, inpNode->name().rfind('/')));
                 }
             }
         }
+        CV_Assert(boxesPredictionNodes.size() == numLayers);
+        CV_Assert(classPredictionNodes.size() == numLayers);
+
+        simplifySubgraphs(net);
+        RemoveIdentityOps(net);
+
+        removeUnusedNodes(net);
+
+        std::string netInputName;
+        for (int i = 0; i < net.node_size(); ++i)
+        {
+            const tensorflow::NodeDef& node = net.node(i);
+            if (node.op() == "Placeholder")
+            {
+                CV_Assert(i < net.node_size() - 1);
+                netInputName = node.name();
+
+                tensorflow::NodeDef* consumer = net.mutable_node(i + 1);
+                std::string weights = consumer->input(0);  // Convolution weights
+                consumer->clear_input();
+                consumer->add_input(netInputName);
+                consumer->add_input(weights);
+                break;
+            }
+        }
+        CV_Assert(!netInputName.empty());
+
+        // Create SSD postprocessing head.
+
+        addConstNode<int>("concat/axis_flatten", -1, net);
+        addConstNode<int>("PriorBox/concat/axis", -2, net);
+
+        for (int i = 0; i < 2; ++i)
+        {
+            std::string label = i == 0 ? "ClassPredictor" : "BoxEncodingPredictor";
+            std::vector<std::string> concatInputs = i == 0 ? classPredictionNodes : boxesPredictionNodes;
+            for (int j = 0; j < numLayers; ++j)
+            {
+                // Flatten predictions
+                std::string inpName = concatInputs[j] + "/BiasAdd";
+                tensorflow::NodeDef* flatten = addNode("Flatten", inpName + "/Flatten", inpName, net);
+                concatInputs[j] = flatten->name();
+            }
+            addConcatNode(label + "/concat", concatInputs, "concat/axis_flatten", net);
+        }
+
+        for (int i = 0; i < numLayers; ++i)
+        {
+            nodesMapIt = nodesMap.find(boxesPredictionNodes[i] + "/Conv2D");
+            CV_Assert(nodesMapIt != nodesMap.end());
+            addAttr<bool>("loc_pred_transposed", true, nodesMapIt->second);
+        }
+
+        // Add layers that generate anchors (bounding boxes proposals).
+        std::vector<float> scales(1 + numLayers, 1.0f);
+        for (int i = 0; i < numLayers; ++i)
+        {
+            scales[i] = minScale + i * (maxScale - minScale) / (numLayers - 1);
+        }
+
+        std::vector<std::string> priorBoxesNames;
+
+        for (int i = 0; i < numLayers; ++i)
+        {
+            tensorflow::NodeDef* priorBox = net.add_node();
+            priorBox->set_name(cv::format("PriorBox_%d", i));
+            priorBox->set_op("PriorBox");
+            priorBox->add_input(boxesPredictionNodes[i] + "/BiasAdd");
+            priorBox->add_input(netInputName);
+
+            addAttr<bool>("flip", false, priorBox);
+            addAttr<bool>("clip", false, priorBox);
+
+            std::vector<float> widths, heights;
+            if (i == 0 && reduceBoxesInLowestLayer)
+            {
+                widths.push_back(0.1);
+                widths.push_back(minScale * sqrt(2.0f));
+                widths.push_back(minScale * sqrt(0.5f));
+
+                heights.push_back(0.1);
+                heights.push_back(minScale / sqrt(2.0f));
+                heights.push_back(minScale / sqrt(0.5f));
+            }
+            else
+            {
+                for (int j = 0; j < aspectRatios.size(); ++j)
+                {
+                    float ar = aspectRatios[j];
+                    widths.push_back(scales[i] * sqrt(ar));
+                    heights.push_back(scales[i] / sqrt(ar));
+                }
+                widths.push_back(sqrt(scales[i] * scales[i + 1]));
+                heights.push_back(sqrt(scales[i] * scales[i + 1]));
+            }
+            for (int j = 0; j < widths.size(); ++j)
+            {
+                widths[j] *= imgWidth;
+                heights[j] *= imgHeight;
+            }
+
+            addAttr("width", widths, priorBox);
+            addAttr("height", heights, priorBox);
+            std::vector<float> variance(4);
+            variance[0] = variance[1] = 0.1;
+            variance[2] = variance[3] = 0.2;
+            addAttr("variance", variance, priorBox);
+            priorBoxesNames.push_back(priorBox->name());
+        }
+        addConcatNode("PriorBox/concat", priorBoxesNames, "concat/axis_flatten", net);
+
+        // Sigmoid for classes predictions and DetectionOutput layer
+        tensorflow::NodeDef* sigmoid = addNode("Sigmoid", "ClassPredictor/concat/sigmoid",
+                                               "ClassPredictor/concat", net);
+
+        addDetectionOutputNode("detection_out", "BoxEncodingPredictor/concat",
+                               sigmoid->name(), "PriorBox/concat", numClasses + 1,
+                               iouThresh, scoreThresh, 100, net);
+        removeUnconnectedNodes(net, "detection_out");
     }
-}
+
+private:
+    virtual bool toRemove(const tensorflow::NodeDef& node) CV_OVERRIDE
+    {
+        const std::string& op = node.op();
+        const std::string& name = node.name();
+        return keepOps.find(op) == keepOps.end() ||
+               name.find("MultipleGridAnchorGenerator") == 0 ||
+               name.find("Postprocessor") == 0 ||
+               name.find("Preprocessor") == 0;
+    }
+
+    std::set<std::string> keepOps;
+};
 
 bool simplifyNetFromObjectDetectionAPI(const char* config, tensorflow::GraphDef* net)
 {
@@ -617,13 +861,26 @@ bool simplifyNetFromObjectDetectionAPI(const char* config, tensorflow::GraphDef*
     std::vector<std::string> tokens;
     tokenize(content, tokens);
 
+    // for (int i = 0; i < tokens.size(); ++i)
+    // {
+    //   std::cout << tokens[i] << '\n';
+    // }
+
     if (tokens.size() > 1 && tokens[1] == "model")
     {
         std::vector<std::string>::iterator tokenIt = tokens.begin();
         TextMessageNode rootMsg(parseTextMessage(tokenIt));
 
         if (rootMsg["model"].has("ssd"))
-            simplifySSD(*net, rootMsg["model"]["ssd"]);
+        {
+            SSDSimplifier simplifier;
+            simplifier.process(*net, rootMsg["model"]["ssd"]);
+        }
+        else if (rootMsg["model"].has("faster_rcnn"))
+        {
+            FasterRCNNSimplifier simplifier;
+            simplifier.process(*net, rootMsg["model"]["faster_rcnn"]);
+        }
         else
         {
             CV_Error(Error::StsNotImplemented, "Unsupported object detection model");

@@ -367,7 +367,7 @@ TEST_P(Test_TensorFlow_nets, Inception_v2_Faster_RCNN)
         (backend == DNN_BACKEND_OPENCV && target == DNN_TARGET_OPENCL_FP16))
         throw SkipTestException("");
 
-    std::string proto = findDataFile("dnn/faster_rcnn_inception_v2_coco_2018_01_28.pbtxt", false);
+    std::string proto = findDataFile("dnn/faster_rcnn_inception_v2_coco.config", false);
     std::string model = findDataFile("dnn/faster_rcnn_inception_v2_coco_2018_01_28.pb", false);
 
     Net net = readNetFromTensorflow(model, proto);

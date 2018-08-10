@@ -430,22 +430,6 @@ private:
 
 TFImporter::TFImporter(const char *model, const char *config)
 {
-    // google::protobuf::RepeatedPtrField<tensorflow::NodeDef>::iterator it;
-    // for (it = netBin.mutable_node()->begin(); it != netBin.mutable_node()->end();)
-    // {
-    //     if (it->op() == "Const")
-    //         it = netBin.mutable_node()->erase(it);
-    //     else
-    //         ++it;
-    // }
-    //
-    // std::string output;
-    // google::protobuf::TextFormat::PrintToString(netBin, &output);
-    //
-    // std::ofstream ofs("graph.pbtxt");
-    // ofs << output;
-    // ofs.close();
-
     if (model && model[0])
         ReadTFNetParamsFromBinaryFileOrDie(model, &netBin);
     if (config && config[0])
@@ -1930,6 +1914,25 @@ Net readNetFromTensorflow(const std::vector<uchar>& bufferModel, const std::vect
                                   reinterpret_cast<const char*>(&bufferConfig[0]);
     return readNetFromTensorflow(bufferModelPtr, bufferModel.size(),
                                  bufferConfigPtr, bufferConfig.size());
+}
+
+void writeTextGraph(const String& model, const String& output)
+{
+    RepeatedPtrField<tensorflow::NodeDef>::iterator it;
+    for (it = netBin.mutable_node()->begin(); it != netBin.mutable_node()->end();)
+    {
+        if (it->op() == "Const")
+            it = netBin.mutable_node()->erase(it);
+        else
+            ++it;
+    }
+
+    std::string output;
+    google::protobuf::TextFormat::PrintToString(netBin, &output);
+
+    std::ofstream ofs("graph.pbtxt");
+    ofs << output;
+    ofs.close();
 }
 
 CV__DNN_EXPERIMENTAL_NS_END
