@@ -176,12 +176,14 @@ __kernel void MEAN_FUSE(__global const T * A,
     work[lid].s2 = dot(dot2, b0);
     work[lid].s3 = dot(dot3, b0);
 
-    for(unsigned int stride=get_local_size(0)/2 ; stride>0 ; stride>>=1)
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    Dtype4 acc = (Dtype4)0.f;
+    for(unsigned int stride=get_local_size(0)/2; stride>lid ; stride>>=1)
     {
-        barrier(CLK_LOCAL_MEM_FENCE);
-        if(lid < stride)
-            work[lid] += work[lid+stride];
+        acc += work[lid+stride];
     }
+    work[lid] += acc;
     barrier(CLK_LOCAL_MEM_FENCE);
 
     if(lid == 0)
