@@ -259,6 +259,7 @@ int main(int argc, char** argv)
             putText(frame, label, Point(0, 45), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0));
         }
         imshow(kWinName, frame);
+        imwrite("ref.jpg", frame);
     }
 
     process = false;

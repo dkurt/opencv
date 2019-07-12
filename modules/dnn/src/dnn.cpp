@@ -1601,6 +1601,7 @@ struct Net::Impl
             Ptr<Layer> layer = ld.layerInstance;
             if (!fused && !layer->supportBackend(preferableBackend))
             {
+                std::cout << ld.type << std::endl;
                 addInfEngineNetOutputs(ld);
                 net = Ptr<InfEngineBackendNet>();
                 netBlobsWrappers.clear();  // Is not used for R5 release but we don't wrap it to #ifdef.

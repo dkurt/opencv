@@ -661,7 +661,7 @@ namespace cv {
 
                         CV_Assert(classes > 0 && num_of_anchors > 0 && (num_of_anchors * 2) == anchors_vec.size());
 
-                        setParams.setPermute(false);
+                        // setParams.setPermute(false);
                         setParams.setYolo(classes, mask_vec, anchors_vec, thresh, nms_threshold);
                     }
                     else {
