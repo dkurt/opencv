@@ -44,6 +44,8 @@
 #include "layers_common.hpp"
 #include "../op_halide.hpp"
 #include "../op_inf_engine.hpp"
+#include "../ie_ngraph.hpp"
+
 #include <algorithm>
 #include <stdlib.h>
 using std::max;
@@ -318,6 +320,17 @@ public:
         ieLayer.setAxis(clamp(axisRaw, input->getDims().size()));
 
         return Ptr<BackendNode>(new InfEngineBackendNode(ieLayer));
+    }
+#endif  // HAVE_INF_ENGINE
+
+#ifdef HAVE_INF_ENGINE
+    virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
+    {
+        InferenceEngine::DataPtr input = ngraphDataNode(inputs[0]);
+        int axis = clamp(axisRaw, input->getDims().size());
+        Ptr<InfEngineNgraphNode> ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>();
+        auto softmax = std::make_shared<ngraph::op::Softmax>(ieInpNode->node, ngraph::AxisSet({(size_t)axis}));
+        return Ptr<BackendNode>(new InfEngineNgraphNode(softmax));
     }
 #endif  // HAVE_INF_ENGINE
 

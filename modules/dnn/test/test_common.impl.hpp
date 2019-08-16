@@ -21,10 +21,12 @@ CV__DNN_EXPERIMENTAL_NS_BEGIN
 void PrintTo(const cv::dnn::Backend& v, std::ostream* os)
 {
     switch (v) {
-    case DNN_BACKEND_DEFAULT: *os << "DEFAULT"; return;
-    case DNN_BACKEND_HALIDE: *os << "HALIDE"; return;
-    case DNN_BACKEND_INFERENCE_ENGINE: *os << "DLIE"; return;
-    case DNN_BACKEND_OPENCV: *os << "OCV"; return;
+        case DNN_BACKEND_DEFAULT: *os << "DEFAULT"; return;
+        case DNN_BACKEND_HALIDE: *os << "HALIDE"; return;
+        case DNN_BACKEND_INFERENCE_ENGINE: *os << "DLIE"; return;
+        case DNN_BACKEND_OPENCV: *os << "OCV"; return;
+        case DNN_BACKEND_NGRAPH: *os << "NGRAPH"; return;
+        default: /* do nothing */;
     } // don't use "default:" to emit compiler warnings
     *os << "DNN_BACKEND_UNKNOWN(" << (int)v << ")";
 }

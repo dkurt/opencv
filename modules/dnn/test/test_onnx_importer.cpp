@@ -57,6 +57,9 @@ public:
         net.setInput(inp);
         Mat out = net.forward("");
 
+        std::cout << "inp " << inp.size << '\n';
+        std::cout << "out " << out.size << '\n';
+
         if (useSoftmax)
         {
             LayerParams lp;

@@ -44,6 +44,9 @@
 #include "layers_common.hpp"
 #include "../op_halide.hpp"
 #include "../op_inf_engine.hpp"
+
+#include "../ie_ngraph.hpp"
+
 #include "opencv2/core/hal/hal.hpp"
 #include "opencv2/core/hal/intrin.hpp"
 #include <iostream>
@@ -258,6 +261,9 @@ public:
             if (kernel_size.size() == 3)
                 return preferableTarget == DNN_TARGET_CPU;
             return (preferableTarget != DNN_TARGET_MYRIAD || dilation.width == dilation.height);
+        }
+        else if (backendId == DNN_BACKEND_NGRAPH) {
+            return true;
         }
         else
 #endif
@@ -525,6 +531,99 @@ public:
             l.getParameters()["auto_pad"] = padMode == "VALID" ? std::string("valid") : std::string("same_upper");
 
         return Ptr<BackendNode>(new InfEngineBackendNode(l));
+    }
+#endif  // HAVE_INF_ENGINE
+
+#ifdef HAVE_INF_ENGINE
+    virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> > &inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
+    {
+        CV_Assert_N(inputs.size() == 1, nodes.size() == 1);
+        Ptr<InfEngineNgraphNode> ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>();
+        InferenceEngine::DataPtr input = ngraphDataNode(inputs[0]);
+        std::vector<size_t> dims = input->getDims();
+        CV_Assert(dims.size() == 4 || dims.size() == 5);
+        const int inpCn = dims[1];
+        const int outCn = blobs[0].size[0];
+        const int inpGroupCn = blobs[0].size[1];
+        const int group = inpCn / inpGroupCn;
+
+        auto type = blobs[0].type() == CV_32F ? ngraph::element::f32 : ngraph::element::f16;
+        std::vector<size_t> kernel_shape(&blobs[0].size[0], &blobs[0].size[0] + blobs[0].dims);
+        auto ieWeights = std::make_shared<ngraph::op::Constant>(type, kernel_shape, blobs[0].data);
+
+        if (fusedWeights)
+        {
+            if (weightsMat.isContinuous())
+            {
+                Mat cvWeights = weightsMat.reshape(1, blobs[0].dims, blobs[0].size);
+                std::vector<size_t> kernel_shape(&cvWeights.size[0], &cvWeights.size[0] + cvWeights.dims);
+                ieWeights = std::make_shared<ngraph::op::Constant>(type, kernel_shape, cvWeights.data);
+                // ieWeights = wrapToNgraphBlob(cvWeights, layout);
+            }
+            else
+            {
+                Mat newWeights = blobs[0].reshape(1, outCn);
+                Mat cvWeights = weightsMat.colRange(0, newWeights.cols);
+                cvWeights.copyTo(newWeights);
+                ieWeights = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape({1, (size_t)outCn}), cvWeights.data);
+            }
+        }
+
+        ngraph::op::PadType pad_type = ngraph::op::PadType::EXPLICIT;
+        if (!padMode.empty() && padMode == "SAME") {
+            pad_type = ngraph::op::PadType::SAME_UPPER;
+
+        }
+
+        if (group != 1) {
+            auto conv_node = std::make_shared<ngraph::op::GroupConvolution>(ieInpNode->node, ieWeights,
+                                                                            ngraph::Strides(strides),
+                                                                            ngraph::Strides(dilations),
+                                                                            ngraph::CoordinateDiff(std::vector<std::ptrdiff_t>(pads_begin.begin(), pads_begin.end())),
+                                                                            ngraph::CoordinateDiff(std::vector<std::ptrdiff_t>(pads_end.end(), pads_end.end())),
+                                                                            ngraph::Strides{},
+                                                                            group,
+                                                                            pad_type);
+            // if (hasBias() || fusedBias)
+            // {
+            //     auto bias = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape((size_t)outCn), biasvec.data());
+            //     bool with_relu = false;
+            //     ngraph::Shape output_shape;
+            //     auto conv_bias = std::make_shared<ngraph::op::GroupConvolutionBias>(conv_node, bias, group, ngraph::Shape(), with_relu);
+            //     return Ptr<BackendNode>(new InfEngineNgraphNode(conv_bias));
+            // }
+            // return Ptr<BackendNode>(new InfEngineNgraphNode(conv_node));
+            if (hasBias() || fusedBias)
+            {
+                auto bias = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape({(size_t)outCn}), biasvec.data());
+                // std::cout << "bias " << bias->get_shape_val() << '\n';
+                auto conv_bias = conv_node + bias;
+                return Ptr<BackendNode>(new InfEngineNgraphNode(conv_bias));
+            }
+            return Ptr<BackendNode>(new InfEngineNgraphNode(conv_node));
+        } else {
+            auto conv_node = std::make_shared<ngraph::op::Convolution>(ieInpNode->node, ieWeights,
+                                                                       ngraph::Strides(strides),
+                                                                       ngraph::Strides(dilations),
+                                                                       ngraph::CoordinateDiff(std::vector<std::ptrdiff_t>(pads_begin.begin(), pads_begin.end())),
+                                                                       ngraph::CoordinateDiff(std::vector<std::ptrdiff_t>(pads_end.end(), pads_end.end())),
+                                                                       ngraph::Strides{},
+                                                                       pad_type);
+
+
+           if (hasBias() || fusedBias)
+           {
+               auto bias = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape({(size_t)outCn}), biasvec.data());
+               std::cout << "bias " << bias->get_shape() << '\n';
+               auto new_bias = std::make_shared<ngraph::op::Broadcast>(bias, conv_node->get_shape(), ngraph::AxisSet{0, 2, 3});
+               std::cout << "new_bias " << new_bias->get_shape() << '\n';
+               auto conv_bias = conv_node + new_bias;
+               std::cout << "conv_bias " << conv_bias->get_shape() << '\n';
+
+               return Ptr<BackendNode>(new InfEngineNgraphNode(conv_bias));
+           }
+           return Ptr<BackendNode>(new InfEngineNgraphNode(conv_node));
+        }
     }
 #endif  // HAVE_INF_ENGINE
 

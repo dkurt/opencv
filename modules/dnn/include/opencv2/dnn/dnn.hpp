@@ -77,6 +77,7 @@ CV__DNN_EXPERIMENTAL_NS_BEGIN
         DNN_BACKEND_DEFAULT,
         DNN_BACKEND_HALIDE,
         DNN_BACKEND_INFERENCE_ENGINE,  //!< Intel's Inference Engine computational backend.
+        DNN_BACKEND_NGRAPH,
         DNN_BACKEND_OPENCV
     };
 
@@ -277,6 +278,8 @@ CV__DNN_EXPERIMENTAL_NS_BEGIN
         virtual Ptr<BackendNode> initHalide(const std::vector<Ptr<BackendWrapper> > &inputs);
 
         virtual Ptr<BackendNode> initInfEngine(const std::vector<Ptr<BackendWrapper> > &inputs);
+
+        virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> > &inputs, const std::vector<Ptr<BackendNode> >& nodes);
 
        /**
         * @brief Automatic Halide scheduling based on layer hyper-parameters.

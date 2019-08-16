@@ -45,6 +45,9 @@
 #include "opencv2/core/hal/intrin.hpp"
 #include "../op_halide.hpp"
 #include "../op_inf_engine.hpp"
+
+#include "../ie_ngraph.hpp"
+
 #include <float.h>
 #include <algorithm>
 #include <numeric>
@@ -180,6 +183,10 @@ public:
 #else
             return false;
 #endif
+        }
+        else if (backendId == DNN_BACKEND_NGRAPH) {
+            std::cout << "support backend" << '\n';
+            return type == MAX || type == AVE;
         }
         else
             return (kernel_size.size() == 3 && backendId == DNN_BACKEND_OPENCV && preferableTarget == DNN_TARGET_CPU) ||
@@ -330,6 +337,36 @@ public:
             CV_Error(Error::StsNotImplemented, "Unsupported pooling type");
         return Ptr<BackendNode>();
     }
+#endif  // HAVE_INF_ENGINE
+
+
+
+#ifdef HAVE_INF_ENGINE
+
+virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
+{
+    CV_Assert_N(inputs.size() == 1, nodes.size() == 1);
+    Ptr<InfEngineNgraphNode> ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>();
+    if (type == AVE) {
+        auto ave_pool = std::make_shared<ngraph::op::AvgPool>(ieInpNode->node, ngraph::Shape(kernel_size),
+                        ngraph::Strides(strides), ngraph::Shape(pads_begin), ngraph::Shape(pads_end));
+        ave_pool->set_ceil_mode(ceilMode);
+        if (!padMode.empty())
+            ave_pool->set_pad_type(padMode == "VALID" ? ngraph::op::PadType::EXPLICIT : ngraph::op::PadType::SAME_UPPER);
+        return Ptr<BackendNode>(new InfEngineNgraphNode(ave_pool));
+    }
+    else if (type == MAX) {
+        auto max_pool = std::make_shared<ngraph::op::MaxPool>(ieInpNode->node, ngraph::Shape(kernel_size),
+                        ngraph::Strides(strides), ngraph::Shape(pads_begin), ngraph::Shape(pads_end));
+        max_pool->set_ceil_mode(ceilMode);
+        if (!padMode.empty())
+            max_pool->set_pad_type(padMode == "VALID" ? ngraph::op::PadType::EXPLICIT : ngraph::op::PadType::SAME_UPPER);
+        return Ptr<BackendNode>(new InfEngineNgraphNode(max_pool));
+    }
+    else
+        CV_Error(Error::StsNotImplemented, "Unsupported pooling type");
+    return Ptr<BackendNode>();
+}
 #endif  // HAVE_INF_ENGINE
 
 
