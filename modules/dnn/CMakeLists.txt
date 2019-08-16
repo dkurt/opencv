@@ -74,12 +74,21 @@ endif()
 
 set(include_dirs ${fw_inc})
 set(sources_options "")
-set(libs libprotobuf ${LAPACK_LIBRARIES})
+# set(libs libprotobuf ${LAPACK_LIBRARIES})
+file(GLOB ngraph_libs "/home/liubov/work_spase/ngraph/build/install/lib/*.so")
+# set(libs libprotobuf ${LAPACK_LIBRARIES} "/home/liubov/work_spase/ngraph/build/install/lib")
+set(libs libprotobuf ${LAPACK_LIBRARIES} ${ngraph_libs})
+
 if(OPENCV_DNN_OPENCL AND HAVE_OPENCL)
   list(APPEND include_dirs ${OPENCL_INCLUDE_DIRS})
 else()
   set(sources_options EXCLUDE_OPENCL)
 endif()
+
+list(APPEND include_dirs "/home/liubov/work_spase/ngraph/build/install/include")
+
+set(IE_MAIN_SOURCE_DIR "/home/liubov/dldt/inference-engine")
+# list(APPEND include_dirs  "${IE_MAIN_SOURCE_DIR}/src/inference_engine")
 
 ocv_module_include_directories(${include_dirs})
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -90,7 +99,7 @@ endif()
 ocv_glob_module_sources(${sources_options} SOURCES ${fw_srcs})
 ocv_create_module(${libs} ${INF_ENGINE_TARGET})
 ocv_add_samples()
-ocv_add_accuracy_tests(${INF_ENGINE_TARGET})
+ocv_add_accuracy_tests(${INF_ENGINE_TARGET} ${ngraph_libs})
 
 set(perf_path "${CMAKE_CURRENT_LIST_DIR}/perf")
 file(GLOB_RECURSE perf_srcs "${perf_path}/*.cpp")
