@@ -93,12 +93,17 @@ public:
     void setInputs(const std::vector<cv::Mat>& inputs, const std::vector<std::string>& names);
     ngraph::ParameterVector getInputs();
 
-    void setUnconnectedNodes(Ptr<InfEngineNgraphNode> node);
+    void setUnconnectedNodes(Ptr<InfEngineNgraphNode>& node);
 
     void addBlobs(const std::vector<cv::Ptr<BackendWrapper> >& ptrs);
 
+    void createNgraphfunction();
+    void setNodePtr(std::shared_ptr<ngraph::Node>* ptr) { all_nodes.push_back(ptr); }
+    void release() { unconnectedNodes.clear(); for (auto& node_ptr : all_nodes) { node_ptr->reset();}}
+
 private:
     std::shared_ptr<ngraph::Function> ngraph_function;
+    std::vector<std::shared_ptr<ngraph::Node>* > all_nodes;
 
     InferenceEngine::ExecutableNetwork netExec;
     InferenceEngine::BlobMap allBlobs;
@@ -119,7 +124,6 @@ private:
     };
 
     ngraph::ParameterVector inputs_vec;
-    // std::vector<std::shared_ptr<ngraph::op::Parameter>> inputs_vec;
     std::vector<Ptr<NgraphReqWrapper> > infRequests;
 
     InferenceEngine::CNNNetwork cnn;
@@ -134,7 +138,9 @@ private:
 class InfEngineNgraphNode : public BackendNode
 {
 public:
-    InfEngineNgraphNode(const std::shared_ptr<ngraph::Node>& node);
+
+    InfEngineNgraphNode(std::shared_ptr<ngraph::Node>&& _node);
+    InfEngineNgraphNode(std::shared_ptr<ngraph::Node>& _node);
 
     void setName(const std::string& name);
 

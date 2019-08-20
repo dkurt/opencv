@@ -558,7 +558,6 @@ public:
                 Mat cvWeights = weightsMat.reshape(1, blobs[0].dims, blobs[0].size);
                 std::vector<size_t> kernel_shape(&cvWeights.size[0], &cvWeights.size[0] + cvWeights.dims);
                 ieWeights = std::make_shared<ngraph::op::Constant>(type, kernel_shape, cvWeights.data);
-                // ieWeights = wrapToNgraphBlob(cvWeights, layout);
             }
             else
             {
@@ -570,34 +569,32 @@ public:
         }
 
         ngraph::op::PadType pad_type = ngraph::op::PadType::EXPLICIT;
-        if (!padMode.empty() && padMode == "SAME") {
-            pad_type = ngraph::op::PadType::SAME_UPPER;
+        if (!padMode.empty())
+            pad_type = padMode == "VALID" ? ngraph::op::PadType::VALID : ngraph::op::PadType::SAME_UPPER;
 
-        }
 
         if (group != 1) {
             auto conv_node = std::make_shared<ngraph::op::GroupConvolution>(ieInpNode->node, ieWeights,
                                                                             ngraph::Strides(strides),
                                                                             ngraph::Strides(dilations),
                                                                             ngraph::CoordinateDiff(std::vector<std::ptrdiff_t>(pads_begin.begin(), pads_begin.end())),
-                                                                            ngraph::CoordinateDiff(std::vector<std::ptrdiff_t>(pads_end.end(), pads_end.end())),
+                                                                            ngraph::CoordinateDiff(std::vector<std::ptrdiff_t>(pads_end.begin(),   pads_end.end())),
                                                                             ngraph::Strides{},
                                                                             group,
                                                                             pad_type);
-            // if (hasBias() || fusedBias)
-            // {
-            //     auto bias = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape((size_t)outCn), biasvec.data());
-            //     bool with_relu = false;
-            //     ngraph::Shape output_shape;
-            //     auto conv_bias = std::make_shared<ngraph::op::GroupConvolutionBias>(conv_node, bias, group, ngraph::Shape(), with_relu);
-            //     return Ptr<BackendNode>(new InfEngineNgraphNode(conv_bias));
-            // }
-            // return Ptr<BackendNode>(new InfEngineNgraphNode(conv_node));
+
             if (hasBias() || fusedBias)
             {
                 auto bias = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape({(size_t)outCn}), biasvec.data());
-                // std::cout << "bias " << bias->get_shape_val() << '\n';
-                auto conv_bias = conv_node + bias;
+                std::vector<int64_t> axis(input->getDims().size());
+                std::iota(axis.begin(), axis.end(), 0);
+                std::vector<int64_t> shape(input->getDims().begin(), input->getDims().end());
+
+                auto axes   = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({axis.size()}), axis.data());
+                auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({shape.size()}), shape.data());
+                auto new_bias = std::make_shared<ngraph::op::DynBroadcast>(bias, shapes, axes);
+
+                auto conv_bias = conv_node + new_bias;
                 return Ptr<BackendNode>(new InfEngineNgraphNode(conv_bias));
             }
             return Ptr<BackendNode>(new InfEngineNgraphNode(conv_node));
@@ -606,20 +603,24 @@ public:
                                                                        ngraph::Strides(strides),
                                                                        ngraph::Strides(dilations),
                                                                        ngraph::CoordinateDiff(std::vector<std::ptrdiff_t>(pads_begin.begin(), pads_begin.end())),
-                                                                       ngraph::CoordinateDiff(std::vector<std::ptrdiff_t>(pads_end.end(), pads_end.end())),
+                                                                       ngraph::CoordinateDiff(std::vector<std::ptrdiff_t>(pads_end.begin(), pads_end.end())),
                                                                        ngraph::Strides{},
                                                                        pad_type);
-
-
            if (hasBias() || fusedBias)
            {
                auto bias = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape({(size_t)outCn}), biasvec.data());
-               std::cout << "bias " << bias->get_shape() << '\n';
-               auto new_bias = std::make_shared<ngraph::op::Broadcast>(bias, conv_node->get_shape(), ngraph::AxisSet{0, 2, 3});
-               std::cout << "new_bias " << new_bias->get_shape() << '\n';
-               auto conv_bias = conv_node + new_bias;
-               std::cout << "conv_bias " << conv_bias->get_shape() << '\n';
+               // std::cout << "bias " << bias->get_shape() << '\n';
+               // std::cout << "bias " << bias->get_friendly_name() << '\n';
 
+               std::vector<int64_t> axis(input->getDims().size());
+               std::iota(axis.begin(), axis.end(), 0);
+               std::vector<int64_t> shape(input->getDims().begin(), input->getDims().end());
+
+               auto axes   = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({axis.size()}), axis.data());
+               auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({shape.size()}), shape.data());
+
+               auto new_bias = std::make_shared<ngraph::op::DynBroadcast>(bias, shapes, axes);
+               auto conv_bias = conv_node + new_bias;
                return Ptr<BackendNode>(new InfEngineNgraphNode(conv_bias));
            }
            return Ptr<BackendNode>(new InfEngineNgraphNode(conv_node));

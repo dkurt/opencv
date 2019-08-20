@@ -42,13 +42,19 @@ ngraphWrappers(const std::vector<Ptr<BackendWrapper> >& ptrs)
     return wrappers;
 }
 
-InfEngineNgraphNode::InfEngineNgraphNode(const std::shared_ptr<ngraph::Node>& _node)
-    : BackendNode(DNN_BACKEND_NGRAPH), node(_node) {}
+InfEngineNgraphNode::InfEngineNgraphNode(std::shared_ptr<ngraph::Node>&& _node)
+    : BackendNode(DNN_BACKEND_NGRAPH), node(std::move(_node)) {
+
+    }
+
+    InfEngineNgraphNode::InfEngineNgraphNode(std::shared_ptr<ngraph::Node>& _node)
+        : BackendNode(DNN_BACKEND_NGRAPH), node(_node) {
+
+        }
 
 void InfEngineNgraphNode::setName(const std::string& name) {
     node->set_friendly_name(name);
 }
-
 
 InfEngineNgraphNet::InfEngineNgraphNet()
 {
@@ -62,26 +68,36 @@ InfEngineNgraphNet::InfEngineNgraphNet(InferenceEngine::CNNNetwork& net) : cnn(n
     device_name = "CPU";
 }
 
-void InfEngineNgraphNet::init(int targetId)
+
+void InfEngineNgraphNet::createNgraphfunction()
 {
     if (!hasNetOwner)
     {
         CV_Assert(!unconnectedNodes.empty());
         ngraph::ResultVector outs;
-        for (auto node : unconnectedNodes)
+        for (auto& node : unconnectedNodes)
         {
             auto out = std::make_shared<ngraph::op::Result>(node);
             outs.emplace_back(out);
         }
-        std::cout << "outs  " << outs[0]->get_shape() << '\n';
-        std::cout << "input " << inputs_vec[0]->get_shape() << '\n';
         ngraph_function = std::make_shared<ngraph::Function>(outs, inputs_vec);
 
-        auto nodes = ngraph_function->get_ops(false);
-        for (auto node : nodes) {
-            std::cout << node->description() << '\n';
+        for (auto& node : inputs_vec)
+        {
+            node = nullptr;
         }
 
+        for (auto& node : outs)
+        {
+            node = nullptr;
+        }
+    }
+}
+
+void InfEngineNgraphNet::init(int targetId)
+{
+    if (!hasNetOwner)
+    {
         cnn = InferenceEngine::CNNNetwork(InferenceEngine::convertFunctionToICNNNetwork(ngraph_function));
     }
 
@@ -126,7 +142,7 @@ ngraph::ParameterVector InfEngineNgraphNet::getInputs() {
     return inputs_vec;
 }
 
-void InfEngineNgraphNet::setUnconnectedNodes(Ptr<InfEngineNgraphNode> node) {
+void InfEngineNgraphNet::setUnconnectedNodes(Ptr<InfEngineNgraphNode>& node) {
     unconnectedNodes.insert(node->node);
 }
 
@@ -142,6 +158,9 @@ static bool detectMyriadX_()
     auto input = std::make_shared<ngraph::op::Parameter>(ngraph::element::f16, ngraph::Shape({1}));
     auto relu = std::make_shared<ngraph::op::Relu>(input);
     auto ngraph_function = std::make_shared<ngraph::Function>(relu, ngraph::ParameterVector{input});
+
+    auto nodes = ngraph_function->get_ops(false);
+
     InferenceEngine::CNNNetwork cnn = InferenceEngine::CNNNetwork(
                                       InferenceEngine::convertFunctionToICNNNetwork(ngraph_function));
     try
@@ -218,6 +237,8 @@ void InfEngineNgraphNet::initPlugin(InferenceEngine::CNNNetwork& net)
 {
     CV_Assert(!isInitialized());
 
+    // net.serialize("/tmp/icnn.xml", "/tmp/icnn.bin");
+
     try
     {
         AutoLock lock(getInitializationMutex());
@@ -230,7 +251,6 @@ void InfEngineNgraphNet::initPlugin(InferenceEngine::CNNNetwork& net)
             {
                 candidates.push_back(param_pluginPath);
             }
-
             if (device_name == "CPU" || device_name == "FPGA")
             {
                 std::string suffixes[] = {"_avx2", "_sse4", ""};
