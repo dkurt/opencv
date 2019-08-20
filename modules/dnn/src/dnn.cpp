@@ -1781,16 +1781,17 @@ void initNgraphBackend()
 
     // Set of all input and output blobs wrappers for current network.
     std::map<LayerPin, Ptr<BackendWrapper> > netBlobsWrappers;
+
     for (it = layers.begin(); it != layers.end(); ++it)
     {
         LayerData &ld = it->second;
+        std::cout << "ld: " << ld.id << " - " << ld.type << '\n';
         if (ld.id == 0) {
             std::vector<std::string> inputNames;
             for (int i = 0; i < ld.outputBlobsWrappers.size(); i++) {
                 Ptr<NgraphBackendWrapper> inpWrapper = ld.outputBlobsWrappers[i].dynamicCast<NgraphBackendWrapper>();
                 inputNames.push_back(inpWrapper->dataPtr->getName());
             }
-            std::cout << "inputNames " << inputNames[0] << '\n';
             if (net.empty()) {
                 net = Ptr<InfEngineNgraphNet>(new InfEngineNgraphNet());
             }
@@ -1865,7 +1866,7 @@ void initNgraphBackend()
         Ptr<InfEngineNgraphNode> ieNode = node.dynamicCast<InfEngineNgraphNode>();
         CV_Assert(!ieNode.empty());
         ieNode->net = net;
-
+        ieNode->net->setNodePtr(&ieNode->node);
 
         // Convert weights in FP16 for specific targets.
         // if ((preferableTarget == DNN_TARGET_OPENCL_FP16 ||
@@ -1902,7 +1903,7 @@ void initNgraphBackend()
         if (ld.backendNodes.find(preferableBackend) == ld.backendNodes.end())
             continue;
 
-        Ptr<BackendNode> node = ld.backendNodes[preferableBackend];
+        Ptr<BackendNode>& node = ld.backendNodes[preferableBackend];
         if (node.empty())
             continue;
 
@@ -1915,6 +1916,8 @@ void initNgraphBackend()
         if (!ieNode->net->isInitialized())
         {
             ieNode->net->setUnconnectedNodes(ieNode);
+            ieNode->net->createNgraphfunction();
+            ieNode->net->release();
             ieNode->net->init(preferableTarget);
             ld.skip = false;
         }
