@@ -43,6 +43,8 @@
 #include "../precomp.hpp"
 #include "layers_common.hpp"
 #include "../op_inf_engine.hpp"
+#include "../ie_ngraph.hpp"
+
 #include <opencv2/dnn/shape_utils.hpp>
 
 #ifdef HAVE_OPENCL
@@ -117,7 +119,7 @@ public:
     virtual bool supportBackend(int backendId) CV_OVERRIDE
     {
 #ifdef HAVE_INF_ENGINE
-        if (backendId == DNN_BACKEND_INFERENCE_ENGINE)
+        if (backendId == DNN_BACKEND_INFERENCE_ENGINE || backendId == DNN_BACKEND_NGRAPH)
             return !zeroDev && (preferableTarget != DNN_TARGET_MYRIAD || eps <= 1e-7f);
         else
 #endif  // HAVE_INF_ENGINE
@@ -379,6 +381,15 @@ public:
         ieLayer.setNormalize(normVariance);
         ieLayer.setEpsilon(eps);
         return Ptr<BackendNode>(new InfEngineBackendNode(ieLayer));
+    }
+#endif  // HAVE_INF_ENGINE
+
+#ifdef HAVE_INF_ENGINE
+    virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
+    {
+        Ptr<InfEngineNgraphNode> ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>();
+        auto mvn = std::make_shared<ngraph::op::MVN>(ieInpNode->node, acrossChannels, normVariance, eps);
+        return Ptr<BackendNode>(new InfEngineNgraphNode(mvn));
     }
 #endif  // HAVE_INF_ENGINE
 
