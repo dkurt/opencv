@@ -44,6 +44,7 @@
 #include "layers_common.hpp"
 #include "../op_halide.hpp"
 #include "../op_inf_engine.hpp"
+#include "../ie_ngraph.hpp"
 
 #ifdef HAVE_OPENCL
 #include "opencl_kernels_dnn.hpp"
@@ -105,7 +106,7 @@ public:
     {
         return backendId == DNN_BACKEND_OPENCV ||
                (backendId == DNN_BACKEND_HALIDE && haveHalide() && axis == 1 && !padding) ||  // By channels
-               (backendId == DNN_BACKEND_INFERENCE_ENGINE && haveInfEngine() && !padding);
+               ((backendId == DNN_BACKEND_INFERENCE_ENGINE || backendId == DNN_BACKEND_NGRAPH) && haveInfEngine() && !padding);
     }
 
     class ChannelConcatInvoker : public ParallelLoopBody
@@ -307,6 +308,21 @@ public:
         ieLayer.setAxis(clamp(axis, input->getDims().size()));
         ieLayer.setInputPorts(std::vector<InferenceEngine::Port>(inputs.size()));
         return Ptr<BackendNode>(new InfEngineBackendNode(ieLayer));
+    }
+#endif  // HAVE_INF_ENGINE
+
+
+#ifdef HAVE_INF_ENGINE
+    virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
+    {
+        ngraph::NodeVector inp_nodes;
+        for (auto& node : nodes) {
+            inp_nodes.push_back(node.dynamicCast<InfEngineNgraphNode>()->node);
+        }
+
+        InferenceEngine::DataPtr data = ngraphDataNode(inputs[0]);
+        auto concat = std::make_shared<ngraph::op::Concat>(inp_nodes, clamp(axis, data->getDims().size()));
+        return Ptr<BackendNode>(new InfEngineNgraphNode(concat));
     }
 #endif  // HAVE_INF_ENGINE
 };
