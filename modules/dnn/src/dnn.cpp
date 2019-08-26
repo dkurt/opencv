@@ -1827,8 +1827,9 @@ void initNgraphBackend()
                 inputNodes.push_back(inpNode);
             } else if (ld.inputBlobsId[i].lid == 0) {
                 ngraph::ParameterVector inps = net->getInputs();
-                CV_Assert(inps.size() == 1);
-                inputNodes.push_back(Ptr<BackendNode>(new InfEngineNgraphNode(inps[0])));
+                for (auto& inp : inps) {
+                    inputNodes.push_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
+                }
             }
         }
 

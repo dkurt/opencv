@@ -44,6 +44,10 @@
 #include "layers_common.hpp"
 #include "../op_halide.hpp"
 #include "../op_inf_engine.hpp"
+
+#include "../ie_ngraph.hpp"
+#include <ngraph_ops/matmul_bias.hpp>
+
 #include <opencv2/dnn/shape_utils.hpp>
 
 #ifdef HAVE_OPENCL
@@ -124,7 +128,7 @@ public:
     {
         return backendId == DNN_BACKEND_OPENCV ||
                (backendId == DNN_BACKEND_HALIDE && haveHalide() && axis == 1) ||
-               (backendId == DNN_BACKEND_INFERENCE_ENGINE && haveInfEngine() && axis == 1);
+               ((backendId == DNN_BACKEND_INFERENCE_ENGINE || backendId == DNN_BACKEND_NGRAPH) && haveInfEngine() && axis == 1);
     }
 
     virtual bool setActivation(const Ptr<ActivationLayer>& layer) CV_OVERRIDE
@@ -453,6 +457,58 @@ public:
             addConstantData("biases", wrapToInfEngineBlob(blobs[1], {(size_t)outNum}, InferenceEngine::Layout::C), l);
 
         return Ptr<BackendNode>(new InfEngineBackendNode(l));
+    }
+#endif  // HAVE_INF_ENGINE
+
+
+#ifdef HAVE_INF_ENGINE
+    virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
+    {
+        Ptr<InfEngineNgraphNode> ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>();
+        // std::cout << "ieInpNode " << ieInpNode->node->get_shape() << '\n';
+
+        std::vector<int64_t> data = {1, blobs[0].size[1]};
+        auto new_shape = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({2}), data.data());
+        auto inp = std::make_shared<ngraph::op::DynReshape>(ieInpNode->node, new_shape);
+        // std::cout << "----------inp  " << inp->get_shape() << '\n';
+
+        auto type = blobs[0].type() == CV_32F ? ngraph::element::f32 : ngraph::element::f16;
+        // std::vector<size_t> weight_shape = {(size_t)blobs[0].size[0], (size_t)blobs[0].size[1]};
+        // auto ieWeights = std::make_shared<ngraph::op::Constant>(type, weight_shape, blobs[0].data);
+
+        Mat res = blobs[0].t();
+        std::vector<size_t> weight_shape = {(size_t)blobs[0].size[1], (size_t)blobs[0].size[0]};
+        auto ieWeights = std::make_shared<ngraph::op::Constant>(type, weight_shape, res.data);
+        std::cout << "ieWeights " << ieWeights->get_shape() << '\n';
+
+        // std::vector<int64_t> axes = {1, 0};
+        // auto tr_axes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({2}), axes.data());
+        // auto w_t = std::make_shared<ngraph::op::Transpose>(ieWeights, tr_axes);
+        // auto dot = std::make_shared<ngraph::op::Dot>(inp, w_t);
+
+
+//////////////////////////
+        auto dot = std::make_shared<ngraph::op::Dot>(inp, ieWeights);
+
+        std::cout << "blobs.size() " << blobs.size()  << '\n';
+        if (bias) {
+            const int outNum = blobs[0].size[0];
+            auto bias = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape({1, (size_t)outNum}), blobs[1].data);
+           auto fc = dot + bias;
+           return Ptr<BackendNode>(new InfEngineNgraphNode(fc));
+        }
+        return Ptr<BackendNode>(new InfEngineNgraphNode(dot));
+/////////////////////////////////
+
+        // if (blobs.size() > 1) {
+        //     // auto bias = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape({(size_t)outNum}), blobs[1].data);
+        //     // auto fc = std::make_shared<ngraph::op::MatmulBias>(ieWeights, ieInpNode->node, ieWeights->get_shape(), bias,
+        //     //                                                    ieInpNode->node->get_shape(), true, true, ngraph::AxisSet({1}));
+        //     // return Ptr<BackendNode>(new InfEngineNgraphNode(fc));
+        // } else {
+            // auto fc = std::make_shared<ngraph::op::MatmulBias>(ieWeights, ieInpNode->node, ieWeights->get_shape(), nullptr, ieInpNode->node->get_shape(), true, true);
+            // return Ptr<BackendNode>(new InfEngineNgraphNode(fc));
+        // }
     }
 #endif  // HAVE_INF_ENGINE
 

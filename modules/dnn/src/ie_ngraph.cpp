@@ -81,21 +81,20 @@ void InfEngineNgraphNet::createNgraphfunction()
             outs.emplace_back(out);
         }
         ngraph_function = std::make_shared<ngraph::Function>(outs, inputs_vec);
-
-        for (auto& node : inputs_vec)
-        {
-            node = nullptr;
-        }
-
-        for (auto& node : outs)
-        {
-            node = nullptr;
-        }
     }
 }
 
 void InfEngineNgraphNet::init(int targetId)
 {
+    // auto nodes = ngraph_function->get_ordered_ops();
+    // for (auto& node : nodes) {
+    //     std::cout << node->description() << " " << node->get_friendly_name() << "  ";
+    //     std::cout << node->get_shape() << '\n';
+    //     // if (node->get_friendly_name() == "Constant_1") {
+    //         // std::cout << "data " << node->get_data_ptr()[0] << '\n';
+    //     // }
+    // }
+
     if (!hasNetOwner)
     {
         cnn = InferenceEngine::CNNNetwork(InferenceEngine::convertFunctionToICNNNetwork(ngraph_function));
@@ -126,7 +125,8 @@ void InfEngineNgraphNet::init(int targetId)
     initPlugin(cnn);
 }
 
-void InfEngineNgraphNet::setInputs(const std::vector<cv::Mat>& inputs, const std::vector<std::string>& names) {
+void InfEngineNgraphNet::setInputs(const std::vector<cv::Mat>& inputs,
+                                   const std::vector<std::string>& names) {
     CV_Assert_N(!inputs.empty(), inputs.size() == names.size());
     for (size_t i = 0; i < inputs.size(); i++) {
         std::vector<size_t> shape(&inputs[i].size[0], &inputs[i].size[0] + inputs[i].dims);
@@ -236,71 +236,21 @@ void resetMyriadDevice()
 void InfEngineNgraphNet::initPlugin(InferenceEngine::CNNNetwork& net)
 {
     CV_Assert(!isInitialized());
-
-    // net.serialize("/tmp/icnn.xml", "/tmp/icnn.bin");
+std::cout << "init plugin------" << '\n';
+    net.serialize("/tmp/icnn.xml", "/tmp/icnn.bin");
 
     try
     {
         AutoLock lock(getInitializationMutex());
         {
             isInit = true;
-
-            std::vector<std::string> candidates;
-            std::string param_pluginPath = utils::getConfigurationParameterString("OPENCV_DNN_IE_EXTRA_PLUGIN_PATH", "");
-            if (!param_pluginPath.empty())
-            {
-                candidates.push_back(param_pluginPath);
-            }
-            if (device_name == "CPU" || device_name == "FPGA")
-            {
-                std::string suffixes[] = {"_avx2", "_sse4", ""};
-                bool haveFeature[] = {
-                    checkHardwareSupport(CPU_AVX2),
-                    checkHardwareSupport(CPU_SSE4_2),
-                    true
-                };
-                for (int i = 0; i < 3; ++i)
-                {
-                    if (!haveFeature[i])
-                        continue;
-#ifdef _WIN32
-                    candidates.push_back("cpu_extension" + suffixes[i] + ".dll");
-#elif defined(__APPLE__)
-                    candidates.push_back("libcpu_extension" + suffixes[i] + ".so");  // built as loadable module
-                    candidates.push_back("libcpu_extension" + suffixes[i] + ".dylib");  // built as shared library
-#else
-                    candidates.push_back("libcpu_extension" + suffixes[i] + ".so");
-#endif  // _WIN32
-                }
-            }
-            bool found = false;
-            for (size_t i = 0; i != candidates.size(); ++i)
-            {
-                const std::string& libName = candidates[i];
-                try
-                {
-                    InferenceEngine::IExtensionPtr extension =
-                        InferenceEngine::make_so_pointer<InferenceEngine::IExtension>(libName);
-
-                    getCore().AddExtension(extension, "CPU");
-
-                    CV_LOG_INFO(NULL, "DNN-IE: Loaded extension plugin: " << libName);
-                    found = true;
-                    break;
-                }
-                catch(...) {}
-            }
-            if (!found && !candidates.empty())
-            {
-                CV_LOG_WARNING(NULL, "DNN-IE: Can't load extension plugin (extra layers for some networks). Specify path via OPENCV_DNN_IE_EXTRA_PLUGIN_PATH parameter");
-            }
             // Some of networks can work without a library of extra layers.
 #ifndef _WIN32
             // Limit the number of CPU threads.
             if (device_name == "CPU")
                 getCore().SetConfig({{
                     InferenceEngine::PluginConfigParams::KEY_CPU_THREADS_NUM, format("%d", getNumThreads()),
-                }}, device_name);
+                }}, "CPU");
 #endif
         }
         netExec = getCore().LoadNetwork(net, device_name);

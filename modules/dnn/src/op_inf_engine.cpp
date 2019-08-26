@@ -603,62 +603,7 @@ void InfEngineBackendNet::initPlugin(InferenceEngine::CNNNetwork& net)
 #else
             isInit = true;
 #endif
-            std::vector<std::string> candidates;
-            std::string param_pluginPath = utils::getConfigurationParameterString("OPENCV_DNN_IE_EXTRA_PLUGIN_PATH", "");
-            if (!param_pluginPath.empty())
-            {
-                candidates.push_back(param_pluginPath);
-            }
 
-            if (device_name == "CPU" || device_name == "FPGA")
-            {
-                std::string suffixes[] = {"_avx2", "_sse4", ""};
-                bool haveFeature[] = {
-                    checkHardwareSupport(CPU_AVX2),
-                    checkHardwareSupport(CPU_SSE4_2),
-                    true
-                };
-                for (int i = 0; i < 3; ++i)
-                {
-                    if (!haveFeature[i])
-                        continue;
-#ifdef _WIN32
-                    candidates.push_back("cpu_extension" + suffixes[i] + ".dll");
-#elif defined(__APPLE__)
-                    candidates.push_back("libcpu_extension" + suffixes[i] + ".so");  // built as loadable module
-                    candidates.push_back("libcpu_extension" + suffixes[i] + ".dylib");  // built as shared library
-#else
-                    candidates.push_back("libcpu_extension" + suffixes[i] + ".so");
-#endif  // _WIN32
-                }
-            }
-            bool found = false;
-            for (size_t i = 0; i != candidates.size(); ++i)
-            {
-                const std::string& libName = candidates[i];
-                try
-                {
-                    InferenceEngine::IExtensionPtr extension =
-                        InferenceEngine::make_so_pointer<InferenceEngine::IExtension>(libName);
-
-#if INF_ENGINE_VER_MAJOR_LE(INF_ENGINE_RELEASE_2019R1)
-                    enginePtr->AddExtension(extension, 0);
-#else
-                    ie.AddExtension(extension, "CPU");
-                    // OpenCV fallbacks as extensions.
-                    ie.AddExtension(std::make_shared<InfEngineExtension>(), "CPU");
-#endif
-                    CV_LOG_INFO(NULL, "DNN-IE: Loaded extension plugin: " << libName);
-                    found = true;
-                    break;
-                }
-                catch(...) {}
-            }
-            if (!found && !candidates.empty())
-            {
-                CV_LOG_WARNING(NULL, "DNN-IE: Can't load extension plugin (extra layers for some networks). Specify path via OPENCV_DNN_IE_EXTRA_PLUGIN_PATH parameter");
-            }
-            // Some of networks can work without a library of extra layers.
 #ifndef _WIN32
             // Limit the number of CPU threads.
 #if INF_ENGINE_VER_MAJOR_LE(INF_ENGINE_RELEASE_2019R1)
@@ -669,7 +614,7 @@ void InfEngineBackendNet::initPlugin(InferenceEngine::CNNNetwork& net)
             if (device_name == "CPU")
                 ie.SetConfig({{
                     InferenceEngine::PluginConfigParams::KEY_CPU_THREADS_NUM, format("%d", getNumThreads()),
-                }}, "HETERO:FPGA,CPU");
+                }}, "CPU");
 #endif
 #endif
         }
