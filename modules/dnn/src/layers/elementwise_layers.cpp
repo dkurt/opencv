@@ -166,6 +166,11 @@ public:
     {
         Ptr<InfEngineNgraphNode> ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>();
         auto relu = std::make_shared<ngraph::op::Relu>(ieInpNode->node);
+        // if (slope) {
+        //     auto slope_ = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape({}), &slope);
+        //     auto leaky_relu = std::shared_ptr<ngraph::op::LeakyRelu>(ieInpNode->node, slope_);
+                // return Ptr<BackendNode>(new InfEngineNgraphNode(leaky_relu));
+        // }
         return Ptr<BackendNode>(new InfEngineNgraphNode(relu));
     }
 #endif  // HAVE_INF_ENGINE

@@ -44,6 +44,8 @@
 #include "layers_common.hpp"
 #include "../op_halide.hpp"
 #include "../op_inf_engine.hpp"
+#include "../ie_ngraph.hpp"
+
 #include "opencv2/imgproc.hpp"
 #include "opencv2/dnn/shape_utils.hpp"
 #include "opencv2/core/hal/hal.hpp"
@@ -90,8 +92,10 @@ public:
 
     virtual bool supportBackend(int backendId) CV_OVERRIDE
     {
-        if (backendId == DNN_BACKEND_INFERENCE_ENGINE)
+        if (backendId == DNN_BACKEND_INFERENCE_ENGINE || backendId == DNN_BACKEND_NGRAPH) {
+            CV_Assert(bias == (int)bias);
             return bias == (int)bias;
+        }
         return backendId == DNN_BACKEND_OPENCV || backendId == DNN_BACKEND_HALIDE;
     }
 
@@ -395,6 +399,20 @@ public:
         InferenceEngine::Builder::Layer l = ieLayer;
         l.getParameters()["k"] = bias;
         return Ptr<BackendNode>(new InfEngineBackendNode(l));
+    }
+#endif  // HAVE_INF_ENGINE
+
+#ifdef HAVE_INF_ENGINE
+    virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
+    {
+        float alphaSize = alpha;
+        if (!normBySize)
+            alphaSize *= (type == SPATIAL_NRM ? size*size : size);
+
+        Ptr<InfEngineNgraphNode> ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>();
+        auto lrn = std::make_shared<ngraph::op::LRN>(ieInpNode->node, (double)alphaSize, (double)beta, (double)bias, (size_t)size);
+
+        return Ptr<BackendNode>(new InfEngineNgraphNode(lrn));
     }
 #endif  // HAVE_INF_ENGINE
 
