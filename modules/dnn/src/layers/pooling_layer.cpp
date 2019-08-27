@@ -349,18 +349,20 @@ virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inp
 
     if (type == AVE) {
         auto ave_pool = std::make_shared<ngraph::op::AvgPool>(ieInpNode->node, ngraph::Shape(kernel_size),
-                        ngraph::Strides(strides), ngraph::Shape(pads_begin), ngraph::Shape(pads_end), avePoolPaddedArea);
+                        ngraph::Strides(strides), ngraph::Shape(pads_begin), ngraph::Shape(pads_end),
+                        avePoolPaddedArea, ngraph::op::PadType::EXPLICIT, ceilMode);
+
         if (!padMode.empty())
             ave_pool->set_pad_type(padMode == "VALID" ? ngraph::op::PadType::VALID : ngraph::op::PadType::SAME_UPPER);
-        ave_pool->set_ceil_mode(ceilMode);
         return Ptr<BackendNode>(new InfEngineNgraphNode(ave_pool));
     }
     else if (type == MAX) {
         auto max_pool = std::make_shared<ngraph::op::MaxPool>(ieInpNode->node, ngraph::Shape(kernel_size),
-                        ngraph::Strides(strides), ngraph::Shape(pads_begin), ngraph::Shape(pads_end));
+                        ngraph::Strides(strides), ngraph::Shape(pads_begin), ngraph::Shape(pads_end),
+                        ngraph::op::PadType::EXPLICIT, ceilMode);
         if (!padMode.empty())
             max_pool->set_pad_type(padMode == "VALID" ? ngraph::op::PadType::VALID : ngraph::op::PadType::SAME_UPPER);
-        max_pool->set_ceil_mode(ceilMode);
+
         return Ptr<BackendNode>(new InfEngineNgraphNode(max_pool));
     }
     else
