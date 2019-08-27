@@ -43,6 +43,8 @@
 #include "../precomp.hpp"
 #include "layers_common.hpp"
 #include "../op_inf_engine.hpp"
+#include "../ie_ngraph.hpp"
+
 #include <float.h>
 #include <algorithm>
 #include <opencv2/dnn/shape_utils.hpp>
@@ -65,7 +67,7 @@ public:
     virtual bool supportBackend(int backendId) CV_OVERRIDE
     {
         return backendId == DNN_BACKEND_OPENCV ||
-               (backendId == DNN_BACKEND_INFERENCE_ENGINE && haveInfEngine());
+               ((backendId == DNN_BACKEND_INFERENCE_ENGINE || backendId == DNN_BACKEND_NGRAPH) && haveInfEngine());
     }
 
     bool getMemoryShapes(const std::vector<MatShape> &inputs,
@@ -175,6 +177,40 @@ public:
         return Ptr<BackendNode>(new InfEngineBackendNode(ieLayer));
     }
 #endif  // HAVE_INF_ENGINE
+
+#ifdef HAVE_INF_ENGINE
+virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
+{
+        Ptr<InfEngineNgraphNode> ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>();
+        InferenceEngine::DataPtr input = ngraphDataNode(inputs[0]);
+        std::vector<size_t> dims = input->getDims();
+
+        int numAxes = dims.size();
+        int startAxis = clamp(_startAxis, numAxes);
+        int endAxis = clamp(_endAxis, numAxes);
+
+        CV_Assert(startAxis >= 0);
+        CV_Assert(endAxis >= startAxis && endAxis < (int)numAxes);
+        int64_t flattenedDimensionSize = std::accumulate(dims.begin() + startAxis, dims.begin() + endAxis + 1,
+                                         1, std::multiplies<size_t>());
+
+        std::vector<int64_t> outputShapeVec;
+        for (int i = 0; i < startAxis; i++)
+        {
+            outputShapeVec.push_back(dims[i]);
+        }
+        outputShapeVec.push_back(flattenedDimensionSize);
+        for (size_t i = endAxis + 1; i < numAxes; i++)
+        {
+            outputShapeVec.push_back(dims[i]);
+        }
+
+        auto shape   = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({outputShapeVec.size()}), outputShapeVec.data());
+        auto reshape = std::make_shared<ngraph::op::DynReshape>(ieInpNode->node, shape);
+        return Ptr<BackendNode>(new InfEngineNgraphNode(reshape));
+    }
+#endif  // HAVE_INF_ENGINE
+  // HAVE_INF_ENGINE
 
     int _startAxis;
     int _endAxis;
