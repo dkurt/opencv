@@ -586,12 +586,13 @@ public:
             if (hasBias() || fusedBias)
             {
                 auto bias = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape({(size_t)outCn}), biasvec.data());
-                std::vector<int64_t> axis(input->getDims().size());
-                std::iota(axis.begin(), axis.end(), 0);
+                std::vector<int64_t> axis(input->getDims().size() - 1, 0);
+                std::iota(axis.begin() + 1, axis.end(), 2);
+
                 std::vector<int64_t> shape(input->getDims().begin(), input->getDims().end());
 
                 auto axes   = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({axis.size()}), axis.data());
-                auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({shape.size()}), shape.data());
+                auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({conv_node->get_shape().size()}), conv_node->get_shape().data());
                 auto new_bias = std::make_shared<ngraph::op::DynBroadcast>(bias, shapes, axes);
 
                 auto conv_bias = conv_node + new_bias;
@@ -609,16 +610,12 @@ public:
            if (hasBias() || fusedBias)
            {
                auto bias = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape({(size_t)outCn}), biasvec.data());
-               // std::cout << "bias " << bias->get_shape() << '\n';
-               // std::cout << "bias " << bias->get_friendly_name() << '\n';
 
-               std::vector<int64_t> axis(input->getDims().size());
-               std::iota(axis.begin(), axis.end(), 0);
-               std::vector<int64_t> shape(input->getDims().begin(), input->getDims().end());
+               std::vector<int64_t> axis(input->getDims().size() - 1, 0);
+               std::iota(axis.begin() + 1, axis.end(), 2);
 
                auto axes   = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({axis.size()}), axis.data());
-               auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({shape.size()}), shape.data());
-
+               auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({conv_node->get_shape().size()}), conv_node->get_shape().data());
                auto new_bias = std::make_shared<ngraph::op::DynBroadcast>(bias, shapes, axes);
                auto conv_bias = conv_node + new_bias;
                return Ptr<BackendNode>(new InfEngineNgraphNode(conv_bias));
