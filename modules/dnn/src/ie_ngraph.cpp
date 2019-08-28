@@ -68,6 +68,10 @@ InfEngineNgraphNet::InfEngineNgraphNet(InferenceEngine::CNNNetwork& net) : cnn(n
     device_name = "CPU";
 }
 
+void InfEngineNgraphNet::addOutput(const std::string& name)
+{
+    requestedOutputs.push_back(name);
+}
 
 void InfEngineNgraphNet::createNgraphfunction()
 {
