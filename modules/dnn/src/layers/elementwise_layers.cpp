@@ -46,6 +46,7 @@
 #include "../op_inf_engine.hpp"
 
 #include "../ie_ngraph.hpp"
+#include </home/liubov/work_spase/ngraph/src/ngraph/op/fused/leaky_relu.hpp>
 
 #include <opencv2/dnn/shape_utils.hpp>
 #include <iostream>
@@ -165,13 +166,14 @@ public:
     virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
         Ptr<InfEngineNgraphNode> ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>();
-        auto relu = std::make_shared<ngraph::op::Relu>(ieInpNode->node);
+        // auto relu = std::make_shared<ngraph::op::Relu>(ieInpNode->node);
+        auto node = func.initNgraphAPI(ieInpNode->node);
         // if (slope) {
         //     auto slope_ = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape({}), &slope);
         //     auto leaky_relu = std::shared_ptr<ngraph::op::LeakyRelu>(ieInpNode->node, slope_);
                 // return Ptr<BackendNode>(new InfEngineNgraphNode(leaky_relu));
         // }
-        return Ptr<BackendNode>(new InfEngineNgraphNode(relu));
+        return Ptr<BackendNode>(new InfEngineNgraphNode(node));
     }
 #endif  // HAVE_INF_ENGINE
 
@@ -370,6 +372,18 @@ struct ReLUFunctor
     }
 #endif  // HAVE_INF_ENGINE
 
+#ifdef HAVE_INF_ENGINE
+    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
+    {
+        if (slope) {
+            CV_Error(Error::StsNotImplemented, "");
+            // auto slope_ = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape({}), &slope);
+            // return std::shared_ptr<ngraph::op::LeakyRelu>(node, slope_);
+        }
+        return std::make_shared<ngraph::op::Relu>(node);
+    }
+#endif  // HAVE_INF_ENGINE
+
     bool tryFuse(Ptr<dnn::Layer>&) { return false; }
 
     void getScaleShift(Mat&, Mat&) const {}
@@ -391,7 +405,7 @@ struct ReLU6Functor
     bool supportBackend(int backendId, int)
     {
         return backendId == DNN_BACKEND_OPENCV || backendId == DNN_BACKEND_HALIDE ||
-               backendId == DNN_BACKEND_INFERENCE_ENGINE;
+               backendId == DNN_BACKEND_INFERENCE_ENGINE || backendId == DNN_BACKEND_NGRAPH;
     }
 
     void apply(const float* srcptr, float* dstptr, int len, size_t planeSize, int cn0, int cn1) const
@@ -473,6 +487,13 @@ struct ReLU6Functor
     }
 #endif  // HAVE_INF_ENGINE
 
+#ifdef HAVE_INF_ENGINE
+    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
+    {
+        return std::make_shared<ngraph::op::Clamp>(node, minValue, maxValue);
+    }
+#endif  // HAVE_INF_ENGINE
+
     bool tryFuse(Ptr<dnn::Layer>&) { return false; }
 
     void getScaleShift(Mat&, Mat&) const {}
@@ -545,6 +566,13 @@ struct TanHFunctor
     }
 #endif  // HAVE_INF_ENGINE
 
+#ifdef HAVE_INF_ENGINE
+    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
+    {
+        return std::make_shared<ngraph::op::Tanh>(node);
+    }
+#endif  // HAVE_INF_ENGINE
+
     bool tryFuse(Ptr<dnn::Layer>&) { return false; }
 
     void getScaleShift(Mat&, Mat&) const {}
@@ -559,7 +587,7 @@ struct SigmoidFunctor
     bool supportBackend(int backendId, int)
     {
         return backendId == DNN_BACKEND_OPENCV || backendId == DNN_BACKEND_HALIDE ||
-               backendId == DNN_BACKEND_INFERENCE_ENGINE;
+               backendId == DNN_BACKEND_INFERENCE_ENGINE ||  backendId == DNN_BACKEND_NGRAPH;
     }
 
     void apply(const float* srcptr, float* dstptr, int len, size_t planeSize, int cn0, int cn1) const
@@ -614,6 +642,13 @@ struct SigmoidFunctor
     InferenceEngine::Builder::Layer initInfEngineBuilderAPI()
     {
         return InferenceEngine::Builder::SigmoidLayer("");
+    }
+#endif  // HAVE_INF_ENGINE
+
+#ifdef HAVE_INF_ENGINE
+    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
+    {
+        return std::make_shared<ngraph::op::Sigmoid>(node);
     }
 #endif  // HAVE_INF_ENGINE
 
@@ -688,6 +723,13 @@ struct ELUFunctor
     InferenceEngine::Builder::Layer initInfEngineBuilderAPI()
     {
         return InferenceEngine::Builder::ELULayer("");
+    }
+#endif  // HAVE_INF_ENGINE
+
+#ifdef HAVE_INF_ENGINE
+    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
+    {
+        return std::make_shared<ngraph::op::Elu>(node, 1.0);
     }
 #endif  // HAVE_INF_ENGINE
 
@@ -766,6 +808,14 @@ struct AbsValFunctor
     }
 #endif  // HAVE_INF_ENGINE
 
+#ifdef HAVE_INF_ENGINE
+    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
+    {
+        CV_Error(Error::StsNotImplemented, "");
+        // return std::make_shared<ngraph::op::LeakyRelu>(node, -0.999999);
+    }
+#endif  // HAVE_INF_ENGINE
+
     bool tryFuse(Ptr<dnn::Layer>&) { return false; }
 
     void getScaleShift(Mat&, Mat&) const {}
@@ -834,6 +884,13 @@ struct BNLLFunctor
 
 #ifdef HAVE_INF_ENGINE
     InferenceEngine::Builder::Layer initInfEngineBuilderAPI()
+    {
+        CV_Error(Error::StsNotImplemented, "");
+    }
+#endif  // HAVE_INF_ENGINE
+
+#ifdef HAVE_INF_ENGINE
+    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
     {
         CV_Error(Error::StsNotImplemented, "");
     }
@@ -949,6 +1006,13 @@ struct PowerFunctor
     }
 #endif  // HAVE_INF_ENGINE
 
+#ifdef HAVE_INF_ENGINE
+    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
+    {
+        CV_Error(Error::StsNotImplemented, "");
+    }
+#endif  // HAVE_INF_ENGINE
+
     bool tryFuse(Ptr<dnn::Layer>& top)
     {
         if (power != 1.0f && shift != 0.0f)
@@ -994,7 +1058,7 @@ struct ChannelsPReLUFunctor
     bool supportBackend(int backendId, int)
     {
         return backendId == DNN_BACKEND_OPENCV || backendId == DNN_BACKEND_HALIDE ||
-               backendId == DNN_BACKEND_INFERENCE_ENGINE;
+               backendId == DNN_BACKEND_INFERENCE_ENGINE || backendId == DNN_BACKEND_NGRAPH;
     }
 
     void apply(const float* srcptr, float* dstptr, int len, size_t planeSize, int cn0, int cn1) const
@@ -1086,6 +1150,20 @@ struct ChannelsPReLUFunctor
         return l;
     }
 #endif  // HAVE_INF_ENGINE
+
+#ifdef HAVE_INF_ENGINE
+    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
+    {
+        const size_t numChannels = scale.total();
+        auto type = scale.type() == CV_32F ? ngraph::element::f32 : ngraph::element::f16;
+        auto slope = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape({numChannels}), scale.data);
+
+        // DynBroadcast ?
+
+        return std::make_shared<ngraph::op::PRelu>(node, slope);
+    }
+#endif  // HAVE_INF_ENGINE
+
 
     bool tryFuse(Ptr<dnn::Layer>&) { return false; }
 
