@@ -1744,6 +1744,43 @@ struct Net::Impl
 #endif  // HAVE_INF_ENGINE
     }
 
+
+#ifdef HAVE_INF_ENGINE
+    void addNgraphOutputs(LayerData &ld)
+    {
+        for (int i = 0; i < ld.inputBlobsId.size(); ++i)
+        {
+            LayerData &inpLd = layers[ld.inputBlobsId[i].lid];
+            Ptr<BackendNode> inpNode = inpLd.backendNodes[preferableBackend];
+            if (!inpNode.empty())
+            {
+                Ptr<InfEngineNgraphNode> ieInpNode = inpNode.dynamicCast<InfEngineNgraphNode>();
+                CV_Assert(!ieInpNode.empty()); CV_Assert(!ieInpNode->net.empty());
+                ieInpNode->net->addOutput(ieInpNode->node->get_friendly_name());
+            }
+        }
+
+        // std::vector<Ptr<BackendNode> > inputNodes;
+        // for (int i = 0; i < ld.inputBlobsId.size(); ++i)
+        // {
+        //     LayerData &inpLd = layers[ld.inputBlobsId[i].lid];
+        //     Ptr<BackendNode> inpNode = inpLd.backendNodes[preferableBackend];
+        //     if (!inpNode.empty())
+        //     {
+        //         Ptr<InfEngineNgraphNode> ieInpNode = inpNode.dynamicCast<InfEngineNgraphNode>();
+        //         CV_Assert(!ieInpNode.empty()); //CV_Assert(!ieInpNode->net.empty());
+        //         inputNodes.push_back(inpNode);
+        //     } else if (ld.inputBlobsId[i].lid == 0) {
+        //         ngraph::ParameterVector inps = net->getInputs();
+        //         for (auto& inp : inps) {
+        //             inputNodes.push_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
+        //         }
+        //     }
+        // }
+
+    }
+#endif  // HAVE_INF_ENGINE
+
 void initNgraphBackend()
 {
     CV_TRACE_FUNCTION();
@@ -1806,7 +1843,7 @@ void initNgraphBackend()
         Ptr<Layer> layer = ld.layerInstance;
         if (!fused && !layer->supportBackend(preferableBackend))
         {
-            addInfEngineNetOutputs(ld);
+            addNgraphOutputs(ld);
             net = Ptr<InfEngineNgraphNet>();
             netBlobsWrappers.clear();  // Is not used for R5 release but we don't wrap it to #ifdef.
             layer->preferableTarget = DNN_TARGET_CPU;
