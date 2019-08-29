@@ -240,7 +240,6 @@ void resetMyriadDevice()
 void InfEngineNgraphNet::initPlugin(InferenceEngine::CNNNetwork& net)
 {
     CV_Assert(!isInitialized());
-std::cout << "init plugin------" << '\n';
     net.serialize("/tmp/icnn.xml", "/tmp/icnn.bin");
 
     try
