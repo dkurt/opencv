@@ -1748,6 +1748,19 @@ struct Net::Impl
 #ifdef HAVE_INF_ENGINE
     void addNgraphOutputs(LayerData &ld)
     {
+        Ptr<InfEngineNgraphNet> layerNet;
+        if (ld.backendNodes.find(preferableBackend) != ld.backendNodes.end())
+        {
+            Ptr<BackendNode> node = ld.backendNodes[preferableBackend];
+            if (!node.empty())
+            {
+                Ptr<InfEngineNgraphNode> ieNode = node.dynamicCast<InfEngineNgraphNode>();
+                CV_Assert(!ieNode.empty()); CV_Assert(!ieNode->net.empty());
+                layerNet = ieNode->net;
+            }
+        }
+
+
         for (int i = 0; i < ld.inputBlobsId.size(); ++i)
         {
             LayerData &inpLd = layers[ld.inputBlobsId[i].lid];
@@ -1756,7 +1769,10 @@ struct Net::Impl
             {
                 Ptr<InfEngineNgraphNode> ieInpNode = inpNode.dynamicCast<InfEngineNgraphNode>();
                 CV_Assert(!ieInpNode.empty()); CV_Assert(!ieInpNode->net.empty());
-                ieInpNode->net->addOutput(ieInpNode->node->get_friendly_name());
+                if (layerNet != ieInpNode->net)
+                {
+                    ieInpNode->net->addOutput(ieInpNode->node->get_friendly_name());
+                }
             }
         }
 
@@ -1777,7 +1793,6 @@ struct Net::Impl
         //         }
         //     }
         // }
-
     }
 #endif  // HAVE_INF_ENGINE
 
@@ -1818,7 +1833,6 @@ void initNgraphBackend()
 
     // Set of all input and output blobs wrappers for current network.
     std::map<LayerPin, Ptr<BackendWrapper> > netBlobsWrappers;
-
     for (it = layers.begin(); it != layers.end(); ++it)
     {
         LayerData &ld = it->second;
@@ -1860,14 +1874,48 @@ void initNgraphBackend()
             if (!inpNode.empty())
             {
                 Ptr<InfEngineNgraphNode> ieInpNode = inpNode.dynamicCast<InfEngineNgraphNode>();
-                CV_Assert(!ieInpNode.empty()); //CV_Assert(!ieInpNode->net.empty());
+                CV_Assert(!ieInpNode.empty()); CV_Assert(!ieInpNode->net.empty());
+                if (ieInpNode->net != net)
+                {
+                    net = Ptr<InfEngineNgraphNet>(new InfEngineNgraphNet());
+                    netBlobsWrappers.clear();  // Is not used for R5 release but we don't wrap it to #ifdef.
+
+                    std::vector<std::string> inputNames;
+                    for (int i = 0; i < inpLd.outputBlobsWrappers.size(); i++) {
+                        Ptr<NgraphBackendWrapper> inpWrapper = inpLd.outputBlobsWrappers[i].dynamicCast<NgraphBackendWrapper>();
+                        inputNames.push_back(inpWrapper->dataPtr->getName());
+                    }
+                    net->setInputs(inpLd.outputBlobs, inputNames);
+
+                    ngraph::ParameterVector inps = net->getInputs();
+                    for (auto& inp : inps) {
+                        inputNodes.push_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
+                    }
+                    break;
+                }
                 inputNodes.push_back(inpNode);
+
             } else if (ld.inputBlobsId[i].lid == 0) {
                 ngraph::ParameterVector inps = net->getInputs();
                 for (auto& inp : inps) {
                     inputNodes.push_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
                 }
+            } else if (net.empty()) {
+                net = Ptr<InfEngineNgraphNet>(new InfEngineNgraphNet());
+
+                std::vector<std::string> inputNames;
+                for (int i = 0; i < inpLd.outputBlobsWrappers.size(); i++) {
+                    Ptr<NgraphBackendWrapper> inpWrapper = inpLd.outputBlobsWrappers[i].dynamicCast<NgraphBackendWrapper>();
+                    inputNames.push_back(inpWrapper->dataPtr->getName());
+                }
+                net->setInputs(inpLd.outputBlobs, inputNames);
+
+                ngraph::ParameterVector inps = net->getInputs();
+                for (auto& inp : inps) {
+                    inputNodes.push_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
+                }
             }
+
         }
 
         Ptr<BackendNode> node;
@@ -1888,6 +1936,7 @@ void initNgraphBackend()
 
         if (!fused)
         {
+            CV_Assert(!inputNodes.empty());
             node = layer->initNgraph(ld.inputBlobsWrappers, inputNodes);
             for (int i = 0; i < ld.outputBlobsWrappers.size(); ++i)
             {
@@ -1929,7 +1978,7 @@ void initNgraphBackend()
         // net->connect(ld.inputBlobsWrappers, ld.outputBlobsWrappers, ieNode->layer.getName());
         net->addBlobs(ld.inputBlobsWrappers);
         net->addBlobs(ld.outputBlobsWrappers);
-        // addInfEngineNetOutputs(ld);
+        addNgraphOutputs(ld);
     }
 
 
@@ -1937,7 +1986,7 @@ void initNgraphBackend()
     for (MapIdToLayerData::reverse_iterator it = layers.rbegin(); it != layers.rend(); ++it)
     {
         LayerData &ld = it->second;
-        std::cout << "ld: " << ld.id << " - " << ld.type << '\n';
+        // std::cout << "ld: " << ld.id << " - " << ld.type << '\n';
         if (ld.backendNodes.find(preferableBackend) == ld.backendNodes.end())
             continue;
 
