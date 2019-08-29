@@ -87,6 +87,10 @@ function(download_ie)
   # Redirect plugins.xml output
   ie_patch("cmake/plugins/plugins.cmake" "IE_CONFIG_OUTPUT_FILE=\${config_output_file}" "IE_CONFIG_OUTPUT_FILE=${LIBRARY_OUTPUT_PATH}/plugins.xml")
 
+  # Android
+  ie_patch("thirdparty/clDNN/CMakeLists.txt" "supc++" "")
+  ie_patch("thirdparty/ngraph/src/ngraph/CMakeLists.txt" "target_link_libraries(ngraph PUBLIC dl pthread)" "target_link_libraries(ngraph PUBLIC dl)")
+
   function(download_from_github name version md5 org)
     string(TOUPPER ${name} upName)
     set(src_dir "${ie_src_dir}/${ie_subdir}/inference-engine/thirdparty/${name}")
@@ -119,6 +123,7 @@ function(download_ie)
   download_from_github(ngraph "0.22.0" "1ad1e35c1746c67264c9ee525f5893c0" "NervanaSystems")
 
   set(ENABLE_GNA OFF)
+  set(ENABLE_VPU OFF)
   set(ENABLE_PROFILING_ITT OFF)
   set(ENABLE_SAMPLES_CORE OFF)
   set(ENABLE_SEGMENTATION_TESTS OFF)
@@ -126,6 +131,9 @@ function(download_ie)
   set(ENABLE_OPENCV OFF)
   set(BUILD_TESTS OFF)  # pugixml
   set(BUILD_SHARED_LIBS OFF)  # pugixml
+  set(THREADING "SEQ")
+  set(TREAT_WARNING_AS_ERROR OFF)
+  set(ENABLE_CPPLINT OFF)
 
   if(MSVC)
     ocv_warnings_disable(CMAKE_CXX_FLAGS /wd4146 /wd4703)
@@ -135,7 +143,11 @@ function(download_ie)
                                          -Wundef -Wstrict-aliasing -Wsign-promo -Wreorder -Wunused-variable
                                          -Wunknown-pragmas -Wstrict-overflow -Wextra -Wunused-local-typedefs
                                          -Wunused-function -Wsequence-point -Wunused-but-set-variable -Wparentheses
-                                         -Wsuggest-override -Wimplicit-fallthrough -Wattributes)
+                                         -Wsuggest-override -Wimplicit-fallthrough -Wattributes -Wtautological-compare
+                                         -Wdefaulted-function-deleted
+                                         -Wpessimizing-move -Werror -Wunused-private-field
+                                         -Wmismatched-tags -Wunused-lambda-capture
+                                       -Woverloaded-virtual -Wmissing-braces)
     ocv_warnings_disable(CMAKE_C_FLAGS -Wstrict-prototypes)
 
     if(APPLE)
