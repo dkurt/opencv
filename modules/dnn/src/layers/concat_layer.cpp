@@ -315,6 +315,7 @@ public:
 #ifdef HAVE_INF_ENGINE
     virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
+        CV_Assert(inputs.size() == nodes.size());
         ngraph::NodeVector inp_nodes;
         for (auto& node : nodes) {
             inp_nodes.push_back(node.dynamicCast<InfEngineNgraphNode>()->node);

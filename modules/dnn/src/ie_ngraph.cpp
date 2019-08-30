@@ -78,22 +78,44 @@ void InfEngineNgraphNet::createNgraphfunction()
     if (!hasNetOwner)
     {
         CV_Assert(!unconnectedNodes.empty());
+        for (auto& inp : inputs_vec) {
+            std::cout << "inp node: " << inp->get_friendly_name() << '\n';
+            std::cout << "get " << inp.get() << '\n';
+            auto curr_inp = inp->get_users();
+            std::cout << "curr_inp " << curr_inp[0]->get_friendly_name() << '\n';
+            // for (auto& elem : curr_inp) {
+            //     std::cout << "elem " << elem.get_node()->get_friendly_name() << '\n';
+            // }
+        }
         ngraph::ResultVector outs;
         for (auto& node : unconnectedNodes)
         {
+            std::cout << "out node: " << node->get_friendly_name() << " " <<  node->get_shape() << '\n';
+            auto curr_inp = node->get_users();
+            std::cout << "curr_inp " << curr_inp.size()  << '\n';
+            // std::cout << "curr_inp " << curr_inp.size() << " " << curr_inp[0]->get_friendly_name() << '\n';
             auto out = std::make_shared<ngraph::op::Result>(node);
             outs.emplace_back(out);
         }
         ngraph_function = std::make_shared<ngraph::Function>(outs, inputs_vec);
+        std::cout << "success create ngraph_function " << '\n';
+        for (auto& inp : inputs_vec) {
+            inp = nullptr;
+        }
+
+        for (auto& inp : outs) {
+            inp = nullptr;
+        }
     }
 }
 
 void InfEngineNgraphNet::init(int targetId)
 {
+    std::cout << "--------------init-------------" << '\n';
     // auto nodes = ngraph_function->get_ordered_ops();
     // for (auto& node : nodes) {
-    //     std::cout << node->description() << " " << node->get_friendly_name() << "  ";
-    //     std::cout << node->get_shape() << '\n';
+    //     std::cout  << node->get_friendly_name() << '\n';
+    //     // std::cout << node->get_shape() << '\n';
     //     // if (node->get_friendly_name() == "Constant_1") {
     //         // std::cout << "data " << node->get_data_ptr()[0] << '\n';
     //     // }
@@ -129,17 +151,30 @@ void InfEngineNgraphNet::init(int targetId)
     initPlugin(cnn);
 }
 
-void InfEngineNgraphNet::setInputs(const std::vector<cv::Mat>& inputs,
+ngraph::ParameterVector InfEngineNgraphNet::setInputs(const std::vector<cv::Mat>& inputs,
                                    const std::vector<std::string>& names) {
     CV_Assert_N(!inputs.empty(), inputs.size() == names.size());
-    for (size_t i = 0; i < inputs.size(); i++) {
+    ngraph::ParameterVector current_inp;
+    for (size_t i = 0; i < inputs.size(); i++)
+    {
         std::vector<size_t> shape(&inputs[i].size[0], &inputs[i].size[0] + inputs[i].dims);
-        auto type = inputs[i].type() == CV_16S ?
-                    ngraph::element::f16 : ngraph::element::f32;
+        auto type = inputs[i].type() == CV_16S ? ngraph::element::f16 : ngraph::element::f32;
+
         auto inp = std::make_shared<ngraph::op::Parameter>(type, ngraph::Shape(shape));
         inp->set_friendly_name(names[i]);
-        inputs_vec.push_back(inp);
+
+
+        auto it = std::find_if(inputs_vec.begin(), inputs_vec.end(), [&inp](const std::shared_ptr<ngraph::op::Parameter>& a) {
+                                return a->get_friendly_name() == inp->get_friendly_name();
+                  });
+        if (it == inputs_vec.end()) {
+            inputs_vec.push_back(inp);
+            current_inp.push_back(inp);
+        } else {
+            current_inp.push_back(*it);
+        }
     }
+    return current_inp;
 }
 
 ngraph::ParameterVector InfEngineNgraphNet::getInputs() {
