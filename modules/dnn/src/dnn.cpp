@@ -1796,6 +1796,7 @@ struct Net::Impl
     }
 #endif  // HAVE_INF_ENGINE
 
+
 void initNgraphBackend()
 {
     CV_TRACE_FUNCTION();
@@ -1836,7 +1837,7 @@ void initNgraphBackend()
     for (it = layers.begin(); it != layers.end(); ++it)
     {
         LayerData &ld = it->second;
-        std::cout << "ld: " << ld.id << " - " << ld.type << '\n';
+        std::cout << "ld: " << ld.id << " - " << ld.type << ":   " << ld.name << '\n';
         if (ld.id == 0) {
             std::vector<std::string> inputNames;
             for (int i = 0; i < ld.outputBlobsWrappers.size(); i++) {
@@ -1866,7 +1867,7 @@ void initNgraphBackend()
         ld.skip = true;  // Initially skip all Inference Engine supported layers.
 
         // Create a new network if one of inputs from different Inference Engine graph.
-        std::vector<Ptr<BackendNode> > inputNodes;
+        std::vector<Ptr<BackendNode>> inputNodes;
         for (int i = 0; i < ld.inputBlobsId.size(); ++i)
         {
             LayerData &inpLd = layers[ld.inputBlobsId[i].lid];
@@ -1877,45 +1878,46 @@ void initNgraphBackend()
                 CV_Assert(!ieInpNode.empty()); CV_Assert(!ieInpNode->net.empty());
                 if (ieInpNode->net != net)
                 {
-                    net = Ptr<InfEngineNgraphNet>(new InfEngineNgraphNet());
+                    if (net.empty()) {
+                        net = Ptr<InfEngineNgraphNet>(new InfEngineNgraphNet());
+                    }
                     netBlobsWrappers.clear();  // Is not used for R5 release but we don't wrap it to #ifdef.
 
                     std::vector<std::string> inputNames;
-                    for (int i = 0; i < inpLd.outputBlobsWrappers.size(); i++) {
-                        Ptr<NgraphBackendWrapper> inpWrapper = inpLd.outputBlobsWrappers[i].dynamicCast<NgraphBackendWrapper>();
+                    for (int j = 0; j < inpLd.outputBlobsWrappers.size(); j++) {
+                        Ptr<NgraphBackendWrapper> inpWrapper = inpLd.outputBlobsWrappers[j].dynamicCast<NgraphBackendWrapper>();
                         inputNames.push_back(inpWrapper->dataPtr->getName());
                     }
                     net->setInputs(inpLd.outputBlobs, inputNames);
 
-                    ngraph::ParameterVector inps = net->getInputs();
-                    for (auto& inp : inps) {
-                        inputNodes.push_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
-                    }
-                    break;
-                }
-                inputNodes.push_back(inpNode);
 
-            } else if (ld.inputBlobsId[i].lid == 0) {
-                ngraph::ParameterVector inps = net->getInputs();
-                for (auto& inp : inps) {
-                    inputNodes.push_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
+                    ngraph::ParameterVector inps = net->getInputs();
+                    int size = inps.size() - inpLd.outputBlobs.size();
+                    for (int j = inps.size() - 1; j >= size; j--) {
+                        inputNodes.push_back(Ptr<BackendNode>(new InfEngineNgraphNode(inps[j])));
+                    }
+                } else {
+                    inputNodes.push_back(inpNode);
                 }
-            } else if (net.empty()) {
-                net = Ptr<InfEngineNgraphNet>(new InfEngineNgraphNet());
+
+            } else  { // node from another backend
+                if (net.empty()) {
+                    net = Ptr<InfEngineNgraphNet>(new InfEngineNgraphNet());
+                }
 
                 std::vector<std::string> inputNames;
-                for (int i = 0; i < inpLd.outputBlobsWrappers.size(); i++) {
-                    Ptr<NgraphBackendWrapper> inpWrapper = inpLd.outputBlobsWrappers[i].dynamicCast<NgraphBackendWrapper>();
+                for (int j = 0; j < inpLd.outputBlobsWrappers.size(); j++) {
+                    Ptr<NgraphBackendWrapper> inpWrapper = inpLd.outputBlobsWrappers[j].dynamicCast<NgraphBackendWrapper>();
                     inputNames.push_back(inpWrapper->dataPtr->getName());
                 }
                 net->setInputs(inpLd.outputBlobs, inputNames);
 
                 ngraph::ParameterVector inps = net->getInputs();
-                for (auto& inp : inps) {
-                    inputNodes.push_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
+                int size = inps.size() - inpLd.outputBlobs.size();
+                for (int j = inps.size() - 1; j >= size; j--) {
+                    inputNodes.push_back(Ptr<BackendNode>(new InfEngineNgraphNode(inps[j])));
                 }
             }
-
         }
 
         Ptr<BackendNode> node;
