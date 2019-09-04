@@ -1772,6 +1772,7 @@ struct Net::Impl
                 if (layerNet != ieInpNode->net)
                 {
                     ieInpNode->net->addOutput(ieInpNode->node->get_friendly_name());
+                    ieInpNode->net->setUnconnectedNodes(ieInpNode);
                 }
             }
         }
@@ -2006,8 +2007,19 @@ void initNgraphBackend()
         {
             ieNode->net->setUnconnectedNodes(ieNode);
             ieNode->net->createNgraphfunction();
-            ieNode->net->release();
-            ieNode->net->init(preferableTarget);
+
+
+            int num_comp = ieNode->net->getNumComponents();
+            if (num_comp > 1) {
+                for (int i = num_comp - 1; i >= 0; --i) {
+                    ieNode->net->createNgraphfunction(i);
+                    ieNode->net->release(i);
+                    ieNode->net->init(preferableTarget);
+                }
+            } else {
+                ieNode->net->release();
+                ieNode->net->init(preferableTarget);
+            }
             ld.skip = false;
         }
     }

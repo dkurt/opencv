@@ -8,6 +8,7 @@
 #ifndef __OPENCV_DNN_IE_NGRAPH_HPP__
 #define __OPENCV_DNN_IE_NGRAPH_HPP__
 
+
 #include "opencv2/core/cvdef.h"
 #include "opencv2/core/cvstd.hpp"
 #include "opencv2/dnn.hpp"
@@ -72,14 +73,12 @@ namespace cv { namespace dnn {
 
 class InfEngineNgraphNode;
 
+
 class InfEngineNgraphNet
 {
 public:
     InfEngineNgraphNet();
-
     InfEngineNgraphNet(InferenceEngine::CNNNetwork& net);
-
-    // void addLayer(std::shared_ptr<ngraph::Node>& node);
 
     void addOutput(const std::string& name);
 
@@ -98,12 +97,24 @@ public:
     void addBlobs(const std::vector<cv::Ptr<BackendWrapper> >& ptrs);
 
     void createNgraphfunction();
-    void setNodePtr(std::shared_ptr<ngraph::Node>* ptr) { all_nodes.push_back(ptr); }
-    void release() { unconnectedNodes.clear(); for (auto& node_ptr : all_nodes) { node_ptr->reset();}}
+    void createNgraphfunction(int comp_id);
+
+    int getNumComponents();
+
+    void setNodePtr(std::shared_ptr<ngraph::Node>* ptr) { all_nodes.emplace((*ptr)->get_friendly_name(), ptr); }
+    void release();
+    void release(int comp_id);
+
 
 private:
+    void dfs(std::shared_ptr<ngraph::Node>& node, std::vector<std::shared_ptr<ngraph::Node>>& comp,
+             std::unordered_map<std::string, bool>& used);
+
     std::shared_ptr<ngraph::Function> ngraph_function;
-    std::vector<std::shared_ptr<ngraph::Node>* > all_nodes;
+
+    std::unordered_map<std::string, std::shared_ptr<ngraph::Node>* > all_nodes;
+
+    std::vector<std::vector<std::shared_ptr<ngraph::Node>>> components;
 
     InferenceEngine::ExecutableNetwork netExec;
     InferenceEngine::BlobMap allBlobs;
@@ -132,7 +143,8 @@ private:
     // std::map<std::string, int> layers;
     std::vector<std::string> requestedOutputs;
 
-    std::set<std::shared_ptr<ngraph::Node>> unconnectedNodes;
+    std::unordered_set<std::shared_ptr<ngraph::Node>> unconnectedNodes;
+
 };
 
 class InfEngineNgraphNode : public BackendNode
