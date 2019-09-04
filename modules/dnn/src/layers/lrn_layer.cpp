@@ -92,9 +92,11 @@ public:
 
     virtual bool supportBackend(int backendId) CV_OVERRIDE
     {
-        if (backendId == DNN_BACKEND_INFERENCE_ENGINE || backendId == DNN_BACKEND_NGRAPH) {
-            CV_Assert(bias == (int)bias);
+        if (backendId == DNN_BACKEND_INFERENCE_ENGINE) {
             return bias == (int)bias;
+        }
+        if (backendId == DNN_BACKEND_NGRAPH) {
+            return type == CHANNEL_NRM && bias == (int)bias;
         }
         return backendId == DNN_BACKEND_OPENCV || backendId == DNN_BACKEND_HALIDE;
     }
@@ -411,7 +413,6 @@ public:
 
         Ptr<InfEngineNgraphNode> ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>();
         auto lrn = std::make_shared<ngraph::op::LRN>(ieInpNode->node, (double)alphaSize, (double)beta, (double)bias, (size_t)size);
-
         return Ptr<BackendNode>(new InfEngineNgraphNode(lrn));
     }
 #endif  // HAVE_INF_ENGINE
