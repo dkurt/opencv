@@ -144,7 +144,7 @@ public:
         CV_Assert(!dims.empty());
 
         CV_Assert(preferableTarget != DNN_TARGET_MYRIAD);
-        auto split = std::make_shared<ngraph::op::Split>(ieInpNode->node, dims.size() - 1, dims[0]);
+        auto split = std::make_shared<ngraph::op::Split>(ieInpNode->node, dims.size() - 1, 1); // num_splits = 1
         return Ptr<BackendNode>(new InfEngineNgraphNode(split));
     }
 #endif  // HAVE_INF_ENGINE
