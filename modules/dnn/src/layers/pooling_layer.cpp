@@ -366,8 +366,7 @@ virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inp
 
         return Ptr<BackendNode>(new InfEngineNgraphNode(max_pool));
     }
-    else if (type == ROI)
-    {
+    else if (type == ROI) {
         Ptr<InfEngineNgraphNode> coords = nodes[1].dynamicCast<InfEngineNgraphNode>();
         auto roi = std::make_shared<ngraph::op::ROIPooling>(ieInpNode->node, coords->node,
                    ngraph::Shape{(size_t)pooledSize.height, (size_t)pooledSize.width}, spatialScale, "max");
