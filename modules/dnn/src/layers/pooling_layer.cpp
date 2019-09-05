@@ -47,6 +47,7 @@
 #include "../op_inf_engine.hpp"
 
 #include "../ie_ngraph.hpp"
+#include <ngraph/op/experimental/layers/roi_pooling.hpp>
 
 #include <float.h>
 #include <algorithm>
@@ -185,7 +186,7 @@ public:
 #endif
         }
         else if (backendId == DNN_BACKEND_NGRAPH) {
-            return type == MAX || type == AVE;
+            return type == MAX || type == AVE || type == ROI;
         }
         else
             return (kernel_size.size() == 3 && backendId == DNN_BACKEND_OPENCV && preferableTarget == DNN_TARGET_CPU) ||
@@ -327,7 +328,7 @@ public:
         {
             InferenceEngine::Builder::PSROIPoolingLayer ieLayer(name);
             ieLayer.setSpatialScale(spatialScale);
-            ieLayer.setOutputDim(psRoiOutChannels);
+            // ieLayer.setOutputDim(psRoiOutChannels);
             ieLayer.setGroupSize(pooledSize.width);
             ieLayer.setInputPorts(std::vector<InferenceEngine::Port>(2));
             return Ptr<BackendNode>(new InfEngineBackendNode(ieLayer));
@@ -344,7 +345,7 @@ public:
 
 virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
 {
-    CV_Assert_N(inputs.size() == 1, nodes.size() == 1);
+    CV_Assert_N((inputs.size() == 1 && (type == MAX || type == AVE)) || inputs.size() == 2, nodes.size() == inputs.size());
     Ptr<InfEngineNgraphNode> ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>();
 
     if (type == AVE) {
@@ -364,6 +365,13 @@ virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inp
             max_pool->set_pad_type(padMode == "VALID" ? ngraph::op::PadType::VALID : ngraph::op::PadType::SAME_UPPER);
 
         return Ptr<BackendNode>(new InfEngineNgraphNode(max_pool));
+    }
+    else if (type == ROI)
+    {
+        Ptr<InfEngineNgraphNode> coords = nodes[1].dynamicCast<InfEngineNgraphNode>();
+        auto roi = std::make_shared<ngraph::op::ROIPooling>(ieInpNode->node, coords->node,
+                   ngraph::Shape{(size_t)pooledSize.height, (size_t)pooledSize.width}, spatialScale, "max");
+        return Ptr<BackendNode>(new InfEngineNgraphNode(roi));
     }
     else
         CV_Error(Error::StsNotImplemented, "Unsupported pooling type");

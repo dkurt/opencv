@@ -8,6 +8,10 @@
 #include "layers_common.hpp"
 #include "../op_inf_engine.hpp"
 
+#include "../ie_ngraph.hpp"
+#include <ngraph/op/experimental/layers/proposal.hpp>
+
+
 namespace cv { namespace dnn {
 
 class ProposalLayerImpl CV_FINAL : public ProposalLayer
@@ -87,7 +91,7 @@ public:
     virtual bool supportBackend(int backendId) CV_OVERRIDE
     {
         return backendId == DNN_BACKEND_OPENCV ||
-               (backendId == DNN_BACKEND_INFERENCE_ENGINE && preferableTarget != DNN_TARGET_MYRIAD);
+               ((backendId == DNN_BACKEND_INFERENCE_ENGINE || backendId == DNN_BACKEND_NGRAPH) && preferableTarget != DNN_TARGET_MYRIAD);
     }
 
     bool getMemoryShapes(const std::vector<MatShape> &inputs,
@@ -345,6 +349,52 @@ public:
         ieLayer.setRatio(ratiosVec);
 
         return Ptr<BackendNode>(new InfEngineBackendNode(ieLayer));
+    }
+#endif  // HAVE_INF_ENGINE
+
+
+#ifdef HAVE_INF_ENGINE
+    virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
+    {
+        ngraph::op::ProposalAttrs attr;
+        attr.base_size = baseSize;
+        attr.nms_thresh = nmsThreshold;
+        attr.feat_stride = featStride;
+        attr.min_size = 16;
+        attr.pre_nms_topn = keepTopBeforeNMS;
+        attr.post_nms_topn = keepTopAfterNMS;
+
+        std::vector<float> ratiosVec(ratios.size());
+        for (int i = 0; i < ratios.size(); ++i)
+            ratiosVec[i] = ratios.get<float>(i);
+        attr.ratio = ratiosVec;
+
+        std::vector<float> scalesVec(scales.size());
+        for (int i = 0; i < scales.size(); ++i)
+            scalesVec[i] = scales.get<float>(i);
+        attr.scale = scalesVec;
+
+
+        // ngraph::op::ProposalAttrs attrs;
+        // attrs.base_size = 1;
+        // attrs.pre_nms_topn = 20;
+        // attrs.post_nms_topn = 200;
+        // const uint64_t batch_size = 7;
+        //
+        // auto class_probs  = std::make_shared<ngraph::op::Parameter>(ngraph::element::f32, ngraph::Shape{batch_size, 12, 34, 62});
+        // auto class_logits = std::make_shared<ngraph::op::Parameter>(ngraph::element::f32, ngraph::Shape{batch_size, 24, 34, 62});
+        // auto image_shape  = std::make_shared<ngraph::op::Parameter>(ngraph::element::f32, ngraph::Shape{3});
+        // auto proposal     = std::make_shared<ngraph::op::Proposal>(class_probs, class_logits, image_shape, attrs);
+        // auto output2 = std::make_shared<ngraph::op::Result>(proposal);
+
+
+        CV_Assert(nodes.size() == 3);
+        Ptr<InfEngineNgraphNode> class_probs = nodes[0].dynamicCast<InfEngineNgraphNode>();
+        Ptr<InfEngineNgraphNode> class_logits = nodes[1].dynamicCast<InfEngineNgraphNode>();
+        Ptr<InfEngineNgraphNode> image_shape = nodes[2].dynamicCast<InfEngineNgraphNode>();
+        auto proposal = std::make_shared<ngraph::op::Proposal>(class_probs->node, class_logits->node, image_shape->node, attr);
+
+        return Ptr<BackendNode>(new InfEngineNgraphNode(proposal));
     }
 #endif  // HAVE_INF_ENGINE
 
