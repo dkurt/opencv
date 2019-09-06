@@ -382,12 +382,13 @@ public:
 #endif  // HAVE_INF_ENGINE
 
 #ifdef HAVE_INF_ENGINE
-    virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
+    virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs,
+                                        const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
-        Ptr<InfEngineNgraphNode> ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>();
-        auto tr_axes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({_order.size()}), _order.data());
-        auto transpose = std::make_shared<ngraph::op::Transpose>(ieInpNode->node, tr_axes);
-
+        auto& ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
+        auto tr_axes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
+                       ngraph::Shape({_order.size()}), _order.data());
+        auto transpose = std::make_shared<ngraph::op::Transpose>(ieInpNode, tr_axes);
         return Ptr<BackendNode>(new InfEngineNgraphNode(transpose));
     }
 #endif  // HAVE_INF_ENGINE

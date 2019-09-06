@@ -501,16 +501,14 @@ public:
 #endif  // HAVE_INF_ENGINE
 
 #ifdef HAVE_INF_ENGINE
-    virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
+    virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs,
+                                        const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
         auto& curr_node = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
-        std::cout << "----------------------" << '\n';
         if (!coeffs.empty()) {
-            // auto coeff = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape({1}), &coeffs[0]);
             auto coeff = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape(), &coeffs[0]);
             curr_node = std::make_shared<ngraph::op::Dot>(coeff, curr_node);
         }
-        std::cout << "-------before for----------" << '\n';
 
         for (size_t i = 1; i < nodes.size(); i++) {
             auto& next_node = nodes[i].dynamicCast<InfEngineNgraphNode>()->node;
@@ -527,40 +525,6 @@ public:
             } else
                 CV_Error(Error::StsNotImplemented, "Unsupported eltwise operation");
         }
-
-        // if (op == SUM) {
-        //     for (size_t i = 1; i < nodes.size(); i++) {
-        //         auto& next_node = nodes[i].dynamicCast<InfEngineNgraphNode>()->node;
-        //         if (!coeffs.empty()) {
-        //             auto coeff = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape({1}), &coeffs[i]);
-        //             next_node = std::make_shared<ngraph::op::Dot>(coeff, next_node);
-        //         }
-        //         curr_node = std::make_shared<ngraph::op::Add>(curr_node, next_node);
-        //     }
-        // }
-        // else if (op == PROD) {
-        //     for (size_t i = 1; i < nodes.size(); i++) {
-        //         auto& next_node = nodes[i].dynamicCast<InfEngineNgraphNode>()->node;
-        //         if (!coeffs.empty()) {
-        //             auto coeff = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape({1}), &coeffs[i]);
-        //             next_node = std::make_shared<ngraph::op::Dot>(coeff, next_node);
-        //         }
-        //         curr_node = std::make_shared<ngraph::op::Multiply>(curr_node, next_node);
-        //     }
-        // }
-        // else if (op == MAX) {
-        //     for (size_t i = 1; i < nodes.size(); i++) {
-        //         auto& next_node = nodes[i].dynamicCast<InfEngineNgraphNode>()->node;
-        //         if (!coeffs.empty()) {
-        //             auto coeff = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape({1}), &coeffs[i]);
-        //             next_node = std::make_shared<ngraph::op::Dot>(coeff, next_node);
-        //         }
-        //         curr_node = std::make_shared<ngraph::op::Max>(curr_node, next_node);
-        //     }
-        // }
-        // else
-        //     CV_Error(Error::StsNotImplemented, "Unsupported eltwise operation");
-
         return Ptr<BackendNode>(new InfEngineNgraphNode(curr_node));
     }
 #endif  // HAVE_INF_ENGINE
