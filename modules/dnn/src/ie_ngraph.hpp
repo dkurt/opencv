@@ -83,44 +83,33 @@ public:
     void addOutput(const std::string& name);
 
     bool isInitialized();
-
     void init(int targetId);
 
     void forward(const std::vector<Ptr<BackendWrapper> >& outBlobsWrappers);
 
     void initPlugin(InferenceEngine::CNNNetwork& net);
     ngraph::ParameterVector setInputs(const std::vector<cv::Mat>& inputs, const std::vector<std::string>& names);
-    ngraph::ParameterVector getInputs();
 
     void setUnconnectedNodes(Ptr<InfEngineNgraphNode>& node);
-
     void addBlobs(const std::vector<cv::Ptr<BackendWrapper> >& ptrs);
 
-    void createNgraphfunction();
-    void createNgraphfunction(int comp_id);
-
-    int getNumComponents();
-
-    void setNodePtr(std::shared_ptr<ngraph::Node>* ptr) { all_nodes.emplace((*ptr)->get_friendly_name(), ptr); }
-    void release();
-    void release(int comp_id);
-
-
+    void createNet(int targetId);
+    void setNodePtr(std::shared_ptr<ngraph::Node>* ptr);
 private:
+    void release();
+    int getNumComponents();
     void dfs(std::shared_ptr<ngraph::Node>& node, std::vector<std::shared_ptr<ngraph::Node>>& comp,
              std::unordered_map<std::string, bool>& used);
 
+    ngraph::ParameterVector inputs_vec;
     std::shared_ptr<ngraph::Function> ngraph_function;
-
-    std::unordered_map<std::string, std::shared_ptr<ngraph::Node>* > all_nodes;
-
     std::vector<std::vector<std::shared_ptr<ngraph::Node>>> components;
+    std::unordered_map<std::string, std::shared_ptr<ngraph::Node>* > all_nodes;
 
     InferenceEngine::ExecutableNetwork netExec;
     InferenceEngine::BlobMap allBlobs;
     std::string device_name;
     bool isInit = false;
-
 
     struct NgraphReqWrapper
     {
@@ -133,16 +122,11 @@ private:
         std::vector<std::string> outsNames;
         bool isReady;
     };
-
-    ngraph::ParameterVector inputs_vec;
     std::vector<Ptr<NgraphReqWrapper> > infRequests;
 
     InferenceEngine::CNNNetwork cnn;
     bool hasNetOwner;
-
-    // std::map<std::string, int> layers;
     std::vector<std::string> requestedOutputs;
-
     std::unordered_set<std::shared_ptr<ngraph::Node>> unconnectedNodes;
 
 };
@@ -165,15 +149,12 @@ class NgraphBackendWrapper : public BackendWrapper
 {
 public:
     NgraphBackendWrapper(int targetId, const Mat& m);
-
     NgraphBackendWrapper(Ptr<BackendWrapper> wrapper);
-
     ~NgraphBackendWrapper();
 
     static Ptr<BackendWrapper> create(Ptr<BackendWrapper> wrapper);
 
     virtual void copyToHost() CV_OVERRIDE;
-
     virtual void setHostDirty() CV_OVERRIDE;
 
     InferenceEngine::DataPtr dataPtr;
@@ -206,11 +187,8 @@ private:
 
 #endif
 
-
 void forwardNgraph(const std::vector<Ptr<BackendWrapper> >& outBlobsWrappers,
                       Ptr<BackendNode>& node);
-
-
 }}  // namespace dnn, namespace cv
 
 

@@ -73,25 +73,23 @@ void InfEngineNgraphNet::addOutput(const std::string& name)
     requestedOutputs.push_back(name);
 }
 
-void InfEngineNgraphNet::release() {
-    unconnectedNodes.clear();
-    for (auto it = all_nodes.begin(); it != all_nodes.end(); ) {
-         it->second->reset();
-         it = all_nodes.erase(it);
+void InfEngineNgraphNet::setNodePtr(std::shared_ptr<ngraph::Node>* ptr) {
+    all_nodes.emplace((*ptr)->get_friendly_name(), ptr);
+}
+
+ void InfEngineNgraphNet::release() {
+     for (auto& node : components.back()) {
+         if (!(node->is_parameter() || node->is_output() || node->is_constant()) ) {
+             auto it = all_nodes.find(node->get_friendly_name());
+             if (it != all_nodes.end()) {
+                 unconnectedNodes.erase(*(it->second));
+                 it->second->reset();
+                 all_nodes.erase(it);
+             }
+         }
      }
  }
- void InfEngineNgraphNet::release(int comp_id) {
-      for (auto& node : components[comp_id]) {
-         if (!(node->is_parameter() || node->is_output() || node->is_constant()) ) {
-              auto it = all_nodes.find(node->get_friendly_name());
-              CV_Assert(it != all_nodes.end());
-              unconnectedNodes.erase(*(it->second));
 
-              it->second->reset();
-              it = all_nodes.erase(it);
-          }
-      }
-  }
 
 void InfEngineNgraphNet::dfs(std::shared_ptr<ngraph::Node>& node, std::vector<std::shared_ptr<ngraph::Node>>& comp,
                              std::unordered_map<std::string, bool>& used) {
@@ -129,9 +127,7 @@ int InfEngineNgraphNet::getNumComponents() {
     return components.size();
 }
 
-void InfEngineNgraphNet::createNgraphfunction()
-{
-    // std::cout << "===createNgraphfunction===" << '\n';
+void InfEngineNgraphNet::createNet(int targetId) {
     if (!hasNetOwner)
     {
         CV_Assert(!unconnectedNodes.empty());
@@ -142,58 +138,42 @@ void InfEngineNgraphNet::createNgraphfunction()
             outs.emplace_back(out);
         }
         ngraph_function = std::make_shared<ngraph::Function>(outs, inputs_vec);
-        // std::cout << "success create ngraph_function " << '\n';
-    }
-}
 
-void InfEngineNgraphNet::createNgraphfunction(int comp_id)
-{
-    // std::cout << "===createNgraphfunction2===" << '\n';
-    if (!hasNetOwner)
-    {
-        CV_Assert(!unconnectedNodes.empty());
-        CV_Assert(comp_id == components.size() - 1);
-        ngraph::ResultVector outs;
-        ngraph::ParameterVector inps;
-        for (auto node : components[comp_id]) {
-            if (node->is_parameter()) {
-                auto parameter = std::dynamic_pointer_cast<ngraph::op::Parameter>(node);
-                inps.push_back(parameter);
+        int num_comp = getNumComponents();
+        if (num_comp > 1) {
+            for (int i = num_comp - 1; i >= 0; --i) {
+                ngraph::ResultVector outs;
+                ngraph::ParameterVector inps;
+                for (auto& node : components.back()) {
+                    if (node->is_parameter()) {
+                        auto parameter = std::dynamic_pointer_cast<ngraph::op::Parameter>(node);
+                        inps.push_back(parameter);
+                    }
+                    else if (node->is_output()) {
+                        auto result = std::dynamic_pointer_cast<ngraph::op::Result>(node);
+                        outs.push_back(result);
+                    }
+                }
+                isInit = false;
+                ngraph_function = std::make_shared<ngraph::Function>(outs, inps);
+                release();
+                components.pop_back();
+                init(targetId);
             }
-            else if (node->is_output()) {
-                auto result = std::dynamic_pointer_cast<ngraph::op::Result>(node);
-                outs.push_back(result);
-            }
+        } else {
+            release();
+            components.clear();
+            init(targetId);
         }
-        ngraph_function = std::make_shared<ngraph::Function>(outs, inps);
-        // std::cout << "components " << components.size() << '\n';
-        // std::cout << "success create ngraph_function " << '\n';
     }
 }
 
 void InfEngineNgraphNet::init(int targetId)
 {
-    std::cout << "--------------init-------------" << '\n';
-    // {
-    //     auto nodes = ngraph_function->get_ordered_ops();
-    //     std::cout << "nodes size = " << nodes.size() << '\n';
-    //     for (auto& node : nodes) {
-    //         std::cout  << node->get_friendly_name() << '\n';
-    //         // std::cout << node->get_shape() << '\n';
-    //         // if (node->get_friendly_name() == "Constant_1") {
-    //             // std::cout << "data " << node->get_data_ptr()[0] << '\n';
-    //         // }
-    //     }
-    // }
-
     if (!hasNetOwner)
     {
-        if (!components.empty()) {
-            components.pop_back();
-        }
         cnn = InferenceEngine::CNNNetwork(InferenceEngine::convertFunctionToICNNNetwork(ngraph_function));
         // cnn.serialize("/tmp/cnn.xml", "/tmp/cnn.bin");
-        // std::cout << "create cnn" << '\n';
     }
 
     switch (targetId)
@@ -220,31 +200,19 @@ void InfEngineNgraphNet::init(int targetId)
         auto node = ngraph_function->output(i).get_node();
         for (size_t i = 0; i < node->get_input_size(); ++i) {
             std::string name = node->input_value(i).get_node()->get_friendly_name();
-            // std::cout << "INPUT: " << name << '\n';
             auto iter = std::find(requestedOutputs.begin(), requestedOutputs.end(), name);
-            // CV_Assert(iter != requestedOutputs.end());  // see Squeezenet - requiredOutputs empty
             if (iter != requestedOutputs.end()) {
                 requestedOutputs.erase(iter);
                 cnn.addOutput(name);
             }
         }
     }
-
-//     for (const auto& name : requestedOutputs)
-//     {
-//         std::cout << "requestedOutputs: " << name << '\n';
-//         cnn.addOutput(name);
-//     }
-//     std::cout << "cnn " << cnn.getOutputsInfo().size() << '\n';
-//     for (const auto& it : cnn.getOutputsInfo()) {
-//         std::cout << "it " << it.first << '\n';
-//     }
     initPlugin(cnn);
 }
 
 ngraph::ParameterVector InfEngineNgraphNet::setInputs(const std::vector<cv::Mat>& inputs,
                                    const std::vector<std::string>& names) {
-    CV_Assert_N(!inputs.empty(), inputs.size() == names.size());
+    CV_Assert_N(inputs.size() == names.size());
     ngraph::ParameterVector current_inp;
     for (size_t i = 0; i < inputs.size(); i++)
     {
@@ -254,8 +222,8 @@ ngraph::ParameterVector InfEngineNgraphNet::setInputs(const std::vector<cv::Mat>
         auto inp = std::make_shared<ngraph::op::Parameter>(type, ngraph::Shape(shape));
         inp->set_friendly_name(names[i]);
 
-
-        auto it = std::find_if(inputs_vec.begin(), inputs_vec.end(), [&inp](const std::shared_ptr<ngraph::op::Parameter>& a) {
+        auto it = std::find_if(inputs_vec.begin(), inputs_vec.end(),
+                                [&inp](const std::shared_ptr<ngraph::op::Parameter>& a) {
                                 return a->get_friendly_name() == inp->get_friendly_name();
                   });
         if (it == inputs_vec.end()) {
@@ -266,10 +234,6 @@ ngraph::ParameterVector InfEngineNgraphNet::setInputs(const std::vector<cv::Mat>
         }
     }
     return current_inp;
-}
-
-ngraph::ParameterVector InfEngineNgraphNet::getInputs() {
-    return inputs_vec;
 }
 
 void InfEngineNgraphNet::setUnconnectedNodes(Ptr<InfEngineNgraphNode>& node) {
@@ -365,7 +329,7 @@ void resetMyriadDevice()
 
 void InfEngineNgraphNet::initPlugin(InferenceEngine::CNNNetwork& net)
 {
-    // CV_Assert(!isInitialized());  // some nets
+    CV_Assert(!isInitialized());  // some nets
     net.serialize("/tmp/icnn.xml", "/tmp/icnn.bin");
 
     try

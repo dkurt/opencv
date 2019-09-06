@@ -42,7 +42,6 @@
 #include "precomp.hpp"
 #include "op_halide.hpp"
 #include "op_inf_engine.hpp"
-
 #include "ie_ngraph.hpp"
 
 #include "halide_scheduler.hpp"
@@ -1776,24 +1775,6 @@ struct Net::Impl
                 }
             }
         }
-
-        // std::vector<Ptr<BackendNode> > inputNodes;
-        // for (int i = 0; i < ld.inputBlobsId.size(); ++i)
-        // {
-        //     LayerData &inpLd = layers[ld.inputBlobsId[i].lid];
-        //     Ptr<BackendNode> inpNode = inpLd.backendNodes[preferableBackend];
-        //     if (!inpNode.empty())
-        //     {
-        //         Ptr<InfEngineNgraphNode> ieInpNode = inpNode.dynamicCast<InfEngineNgraphNode>();
-        //         CV_Assert(!ieInpNode.empty()); //CV_Assert(!ieInpNode->net.empty());
-        //         inputNodes.push_back(inpNode);
-        //     } else if (ld.inputBlobsId[i].lid == 0) {
-        //         ngraph::ParameterVector inps = net->getInputs();
-        //         for (auto& inp : inps) {
-        //             inputNodes.push_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
-        //         }
-        //     }
-        // }
     }
 #endif  // HAVE_INF_ENGINE
 
@@ -1809,6 +1790,7 @@ void initNgraphBackend()
     for (it = layers.begin(); it != layers.end(); ++it)
     {
         LayerData &ld = it->second;
+        std::cout << "ld " << ld.id << '\n';
         if (ld.id == 0)
         {
             CV_Assert((netInputLayer->outNames.empty() && ld.outputBlobsWrappers.size() == 1) ||
@@ -1832,9 +1814,6 @@ void initNgraphBackend()
     // Build Inference Engine networks from sets of layers that support this
     // backend. Split a whole model on several Inference Engine networks if
     // some of layers are not implemented.
-
-    // Set of all input and output blobs wrappers for current network.
-    std::map<LayerPin, Ptr<BackendWrapper> > netBlobsWrappers;
     for (it = layers.begin(); it != layers.end(); ++it)
     {
         LayerData &ld = it->second;
@@ -1842,14 +1821,13 @@ void initNgraphBackend()
 
         if (ld.id == 0 && ld.skip)
             continue;
-        bool fused = ld.skip;
 
+        bool fused = ld.skip;
         Ptr<Layer> layer = ld.layerInstance;
         if (!fused && !layer->supportBackend(preferableBackend))
         {
             addNgraphOutputs(ld);
             net = Ptr<InfEngineNgraphNet>();
-            netBlobsWrappers.clear();  // Is not used for R5 release but we don't wrap it to #ifdef.
             layer->preferableTarget = DNN_TARGET_CPU;
 
             for (int i = 0; i < ld.inputBlobsId.size(); ++i)
@@ -1857,7 +1835,6 @@ void initNgraphBackend()
                 LayerData &inpLd = layers[ld.inputBlobsId[i].lid];
                 Ptr<BackendNode> inpNode = inpLd.backendNodes[preferableBackend];
                 if (!inpNode.empty()) {
-                    std::cout << "set " << inpLd.id << '\n';
                     Ptr<InfEngineNgraphNode> ieNode = inpNode.dynamicCast<InfEngineNgraphNode>();
                     ieNode->net->setUnconnectedNodes(ieNode);
                 }
@@ -1883,20 +1860,18 @@ void initNgraphBackend()
                     if (net.empty()) {
                         net = Ptr<InfEngineNgraphNet>(new InfEngineNgraphNet());
                     }
-                    netBlobsWrappers.clear();  // Is not used for R5 release but we don't wrap it to #ifdef.
-
                     std::vector<std::string> inputNames;
                     for (int j = 0; j < inpLd.outputBlobsWrappers.size(); j++) {
                         Ptr<NgraphBackendWrapper> inpWrapper = inpLd.outputBlobsWrappers[j].dynamicCast<NgraphBackendWrapper>();
                         inputNames.push_back(inpWrapper->dataPtr->getName());
                     }
 
+                    // return only current inputs (not all)
                     auto inps = net->setInputs(inpLd.outputBlobs, inputNames);
                     for (auto& inp : inps) {
                         inputNodes.push_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
                     }
                 } else {
-                    std::cout << "inputNodes.push_back(inpNode);" << '\n';
                     inputNodes.push_back(inpNode);
                 }
             } else  { // node from another backend or empty net
@@ -1908,15 +1883,14 @@ void initNgraphBackend()
                 std::vector<std::string> inputNames;
                 for (int j = 0; j < inpLd.outputBlobsWrappers.size(); j++) {
                     Ptr<NgraphBackendWrapper> inpWrapper = inpLd.outputBlobsWrappers[j].dynamicCast<NgraphBackendWrapper>();
-                    std::cout << "inpWrapper->dataPtr->getName() " << inpWrapper->dataPtr->getName() << '\n';
                     inputNames.push_back(inpWrapper->dataPtr->getName());
                 }
                 auto inps = net->setInputs(inpLd.outputBlobs, inputNames);
                 for (auto& inp : inps) {
                     std::cout << "node inp:  " << inp->get_friendly_name() << '\n';
+                    // Layer_Test_ROIPooling.Accuracy has 2 inputs inpLD = 0, 0 -> has 4 inputNodes (input, rois, input, rois)
                     inputNodes.push_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
                 }
-
                 std::cout << "inputNodes " << inputNodes.size() << '\n';
             }
         }
@@ -1950,7 +1924,6 @@ void initNgraphBackend()
         else if (node.empty())
             continue;
 
-        CV_Assert(!node.empty());
         ld.backendNodes[preferableBackend] = node;
 
         Ptr<InfEngineNgraphNode> ieNode = node.dynamicCast<InfEngineNgraphNode>();
@@ -1975,21 +1948,15 @@ void initNgraphBackend()
         //
         // }
 
-        // if (!fused)
-        //     net->addLayer(ieNode->layer);
-
-        // net->connect(ld.inputBlobsWrappers, ld.outputBlobsWrappers, ieNode->layer.getName());
         net->addBlobs(ld.inputBlobsWrappers);
         net->addBlobs(ld.outputBlobsWrappers);
         addNgraphOutputs(ld);
     }
 
-
     // Initialize all networks.
     for (MapIdToLayerData::reverse_iterator it = layers.rbegin(); it != layers.rend(); ++it)
     {
         LayerData &ld = it->second;
-        // std::cout << "ld: " << ld.id << " - " << ld.type << '\n';
         if (ld.backendNodes.find(preferableBackend) == ld.backendNodes.end())
             continue;
 
@@ -2006,20 +1973,7 @@ void initNgraphBackend()
         if (!ieNode->net->isInitialized())
         {
             ieNode->net->setUnconnectedNodes(ieNode);
-            ieNode->net->createNgraphfunction();
-
-
-            int num_comp = ieNode->net->getNumComponents();
-            if (num_comp > 1) {
-                for (int i = num_comp - 1; i >= 0; --i) {
-                    ieNode->net->createNgraphfunction(i);
-                    ieNode->net->release(i);
-                    ieNode->net->init(preferableTarget);
-                }
-            } else {
-                ieNode->net->release();
-                ieNode->net->init(preferableTarget);
-            }
+            ieNode->net->createNet(preferableTarget);
             ld.skip = false;
         }
     }
