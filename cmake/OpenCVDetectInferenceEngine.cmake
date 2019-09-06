@@ -87,6 +87,7 @@ if(NOT INF_ENGINE_TARGET AND _loc)
 endif()
 
 # Add more features to the target
+
 if(INF_ENGINE_TARGET)
   if(NOT INF_ENGINE_RELEASE)
     message(WARNING "InferenceEngine version have not been set, 2019R3 will be used by default. Set INF_ENGINE_RELEASE variable if you experience build errors.")

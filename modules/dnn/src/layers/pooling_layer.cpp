@@ -342,39 +342,36 @@ public:
 
 
 #ifdef HAVE_INF_ENGINE
-
-virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
+virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs,
+                                    const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
 {
     CV_Assert_N((inputs.size() == 1 && (type == MAX || type == AVE)) || inputs.size() == 2, nodes.size() == inputs.size());
-    Ptr<InfEngineNgraphNode> ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>();
+    auto& ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
+
+    ngraph::op::PadType pad_type = ngraph::op::PadType::EXPLICIT;
+    if (!padMode.empty())
+        pad_type = padMode == "VALID" ? ngraph::op::PadType::VALID : ngraph::op::PadType::SAME_UPPER;
 
     if (type == AVE) {
-        auto ave_pool = std::make_shared<ngraph::op::AvgPool>(ieInpNode->node, ngraph::Shape(kernel_size),
+        auto ave_pool = std::make_shared<ngraph::op::AvgPool>(ieInpNode, ngraph::Shape(kernel_size),
                         ngraph::Strides(strides), ngraph::Shape(pads_begin), ngraph::Shape(pads_end),
-                        avePoolPaddedArea, ngraph::op::PadType::EXPLICIT, ceilMode);
-
-        if (!padMode.empty())
-            ave_pool->set_pad_type(padMode == "VALID" ? ngraph::op::PadType::VALID : ngraph::op::PadType::SAME_UPPER);
+                        avePoolPaddedArea, pad_type, ceilMode);
         return Ptr<BackendNode>(new InfEngineNgraphNode(ave_pool));
     }
     else if (type == MAX) {
-        auto max_pool = std::make_shared<ngraph::op::MaxPool>(ieInpNode->node, ngraph::Shape(kernel_size),
+        auto max_pool = std::make_shared<ngraph::op::MaxPool>(ieInpNode, ngraph::Shape(kernel_size),
                         ngraph::Strides(strides), ngraph::Shape(pads_begin), ngraph::Shape(pads_end),
-                        ngraph::op::PadType::EXPLICIT, ceilMode);
-        if (!padMode.empty())
-            max_pool->set_pad_type(padMode == "VALID" ? ngraph::op::PadType::VALID : ngraph::op::PadType::SAME_UPPER);
-
+                        pad_type, ceilMode);
         return Ptr<BackendNode>(new InfEngineNgraphNode(max_pool));
     }
     else if (type == ROI) {
-        Ptr<InfEngineNgraphNode> coords = nodes[1].dynamicCast<InfEngineNgraphNode>();
-        auto roi = std::make_shared<ngraph::op::ROIPooling>(ieInpNode->node, coords->node,
+        auto& coords = nodes[1].dynamicCast<InfEngineNgraphNode>()->node;
+        auto roi = std::make_shared<ngraph::op::ROIPooling>(ieInpNode, coords,
                    ngraph::Shape{(size_t)pooledSize.height, (size_t)pooledSize.width}, spatialScale, "max");
         return Ptr<BackendNode>(new InfEngineNgraphNode(roi));
     }
     else
         CV_Error(Error::StsNotImplemented, "Unsupported pooling type");
-    return Ptr<BackendNode>();
 }
 #endif  // HAVE_INF_ENGINE
 

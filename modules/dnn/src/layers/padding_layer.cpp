@@ -210,14 +210,15 @@ public:
 #endif
 
 #ifdef HAVE_INF_ENGINE
-    virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
+    virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs,
+                                        const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
-        Ptr<InfEngineNgraphNode> ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>();
+        auto& ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
         std::vector<int> begins(paddings.size(), 0), ends(paddings.size(), 0);
         for (int i = 0; i < paddings.size(); ++i)
         {
             begins[i] = paddings[i].first;
-            ends[i] = paddings[i].second;
+            ends[i]   = paddings[i].second;
         }
 
         auto padding_below = ngraph::CoordinateDiff(std::vector<std::ptrdiff_t>(begins.begin(), begins.end()));
@@ -225,7 +226,7 @@ public:
         auto pad_mode = paddingType == "constant" ? ngraph::op::PadMode::CONSTANT : ngraph::op::PadMode::REFLECT;
         auto arg_pad_value = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape(), &paddingValue);
 
-        auto pad = std::make_shared<ngraph::op::Pad>(ieInpNode->node, arg_pad_value, padding_below, padding_above, pad_mode);
+        auto pad = std::make_shared<ngraph::op::Pad>(ieInpNode, arg_pad_value, padding_below, padding_above, pad_mode);
         return Ptr<BackendNode>(new InfEngineNgraphNode(pad));
     }
 #endif

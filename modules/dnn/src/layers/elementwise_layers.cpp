@@ -46,7 +46,6 @@
 #include "../op_inf_engine.hpp"
 
 #include "../ie_ngraph.hpp"
-#include </home/liubov/work_spase/ngraph/src/ngraph/op/fused/leaky_relu.hpp>
 
 #include <opencv2/dnn/shape_utils.hpp>
 #include <iostream>
@@ -165,14 +164,8 @@ public:
 #ifdef HAVE_INF_ENGINE
     virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
-        Ptr<InfEngineNgraphNode> ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>();
-        // auto relu = std::make_shared<ngraph::op::Relu>(ieInpNode->node);
-        auto node = func.initNgraphAPI(ieInpNode->node);
-        // if (slope) {
-        //     auto slope_ = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape({}), &slope);
-        //     auto leaky_relu = std::shared_ptr<ngraph::op::LeakyRelu>(ieInpNode->node, slope_);
-                // return Ptr<BackendNode>(new InfEngineNgraphNode(leaky_relu));
-        // }
+        auto& ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
+        auto node = func.initNgraphAPI(ieInpNode);
         return Ptr<BackendNode>(new InfEngineNgraphNode(node));
     }
 #endif  // HAVE_INF_ENGINE
@@ -1157,9 +1150,6 @@ struct ChannelsPReLUFunctor
         const size_t numChannels = scale.total();
         auto type = scale.type() == CV_32F ? ngraph::element::f32 : ngraph::element::f16;
         auto slope = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape({numChannels}), scale.data);
-
-        // DynBroadcast ?
-
         return std::make_shared<ngraph::op::PRelu>(node, slope);
     }
 #endif  // HAVE_INF_ENGINE

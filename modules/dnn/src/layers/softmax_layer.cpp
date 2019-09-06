@@ -324,12 +324,12 @@ public:
 #endif  // HAVE_INF_ENGINE
 
 #ifdef HAVE_INF_ENGINE
-    virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
+    virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs,
+                                        const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
-        InferenceEngine::DataPtr input = ngraphDataNode(inputs[0]);
-        int axis = clamp(axisRaw, input->getDims().size());
-        Ptr<InfEngineNgraphNode> ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>();
-        auto softmax = std::make_shared<ngraph::op::Softmax>(ieInpNode->node, ngraph::AxisSet({(size_t)axis}));
+        auto& ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
+        int axis = clamp(axisRaw, ieInpNode->get_shape().size());
+        auto softmax = std::make_shared<ngraph::op::Softmax>(ieInpNode, ngraph::AxisSet({(size_t)axis}));
         return Ptr<BackendNode>(new InfEngineNgraphNode(softmax));
     }
 #endif  // HAVE_INF_ENGINE

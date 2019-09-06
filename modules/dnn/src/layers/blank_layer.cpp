@@ -57,7 +57,6 @@ public:
 
     virtual bool supportBackend(int backendId) CV_OVERRIDE
     {
-        std::cout << "BlankLayer" << '\n';
         return backendId == DNN_BACKEND_OPENCV ||
                ((backendId == DNN_BACKEND_INFERENCE_ENGINE || backendId == DNN_BACKEND_NGRAPH) && haveInfEngine());
     }
@@ -136,15 +135,16 @@ public:
 
 
 #ifdef HAVE_INF_ENGINE
-    virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
+    virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs,
+                                        const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
-        Ptr<InfEngineNgraphNode> ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>();
+        auto& ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
         InferenceEngine::DataPtr input = ngraphDataNode(inputs[0]);
         std::vector<size_t> dims = input->getDims();
         CV_Assert(!dims.empty());
 
         CV_Assert(preferableTarget != DNN_TARGET_MYRIAD);
-        auto split = std::make_shared<ngraph::op::Split>(ieInpNode->node, dims.size() - 1, 1); // num_splits = 1
+        auto split = std::make_shared<ngraph::op::Split>(ieInpNode, dims.size() - 1, 1); // num_splits = 1
         return Ptr<BackendNode>(new InfEngineNgraphNode(split));
     }
 #endif  // HAVE_INF_ENGINE
