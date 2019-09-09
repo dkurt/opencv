@@ -1811,6 +1811,43 @@ void initNgraphBackend()
         }
     }
 
+    if (skipInfEngineInit)
+    {
+        Ptr<BackendNode> node = layers[lastLayerId].backendNodes[preferableBackend];
+        CV_Assert(!node.empty());
+
+        Ptr<InfEngineNgraphNode> ieNode = node.dynamicCast<InfEngineNgraphNode>();
+        CV_Assert(!ieNode.empty());
+
+        for (it = layers.begin(); it != layers.end(); ++it)
+        {
+            LayerData &ld = it->second;
+            if (ld.id == 0)
+            {
+                for (int i = 0; i < ld.inputBlobsWrappers.size(); ++i)
+                {
+                    InferenceEngine::DataPtr dataPtr = ngraphDataNode(ld.inputBlobsWrappers[i]);
+                    dataPtr->setName(netInputLayer->outNames[i]);
+                }
+            }
+            else
+            {
+                for (int i = 0; i < ld.outputBlobsWrappers.size(); ++i)
+                {
+                    InferenceEngine::DataPtr dataPtr = ngraphDataNode(ld.outputBlobsWrappers[i]);
+                    dataPtr->setName(ld.name);
+                }
+            }
+            ieNode->net->addBlobs(ld.inputBlobsWrappers);
+            ieNode->net->addBlobs(ld.outputBlobsWrappers);
+            ld.skip = true;
+        }
+        layers[lastLayerId].skip = false;
+        ieNode->net->init(preferableTarget);
+        return;
+    }
+
+
     // Build Inference Engine networks from sets of layers that support this
     // backend. Split a whole model on several Inference Engine networks if
     // some of layers are not implemented.
@@ -2854,11 +2891,21 @@ Net Net::readFromModelOptimizer(const String& xml, const String& bin)
     Net cvNet;
     cvNet.setInputsNames(inputsNames);
 
+#if defined(INF_ENGINE_RELEASE) && INF_ENGINE_VER_MAJOR_LE(2019010000)
     Ptr<InfEngineBackendNode> backendNode(new InfEngineBackendNode(InferenceEngine::Builder::Layer("")));
     backendNode->net = Ptr<InfEngineBackendNet>(new InfEngineBackendNet(ieNet));
+#else
+    auto fake_node = std::make_shared<ngraph::op::Parameter>(ngraph::element::f32, ngraph::Shape{});
+    Ptr<InfEngineNgraphNode> backendNode(new InfEngineNgraphNode(fake_node));
+    backendNode->net = Ptr<InfEngineNgraphNet>(new InfEngineNgraphNet(ieNet));
+#endif
     for (auto& it : ieNet.getOutputsInfo())
     {
+#if defined(INF_ENGINE_RELEASE) && INF_ENGINE_VER_MAJOR_LE(2019010000)
         Ptr<Layer> cvLayer(new InfEngineBackendLayer(ieNet));
+#else
+        Ptr<Layer> cvLayer(new NgraphBackendLayer(ieNet));
+#endif
         InferenceEngine::CNNLayerPtr ieLayer = ieNet.getLayerByName(it.first.c_str());
         CV_Assert(ieLayer);
 
@@ -2869,12 +2916,20 @@ Net Net::readFromModelOptimizer(const String& xml, const String& bin)
         cvLayer->name = it.first;
         cvLayer->type = ieLayer->type;
         ld.layerInstance = cvLayer;
+#if defined(INF_ENGINE_RELEASE) && INF_ENGINE_VER_MAJOR_LE(2019010000)
         ld.backendNodes[DNN_BACKEND_INFERENCE_ENGINE] = backendNode;
+#else
+        ld.backendNodes[DNN_BACKEND_NGRAPH] = backendNode;
+#endif
 
         for (int i = 0; i < inputsNames.size(); ++i)
             cvNet.connect(0, i, lid, i);
     }
+#if defined(INF_ENGINE_RELEASE) && INF_ENGINE_VER_MAJOR_LE(2019010000)
     cvNet.setPreferableBackend(DNN_BACKEND_INFERENCE_ENGINE);
+#else
+    cvNet.setPreferableBackend(DNN_BACKEND_NGRAPH);
+#endif
 
     cvNet.impl->skipInfEngineInit = true;
     return cvNet;

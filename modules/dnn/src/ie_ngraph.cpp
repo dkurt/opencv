@@ -195,16 +195,22 @@ void InfEngineNgraphNet::init(int targetId)
             CV_Error(Error::StsNotImplemented, "Unknown target");
     };
 
-
-    for (size_t i = 0; i < ngraph_function->get_output_size(); ++i) {
-        auto node = ngraph_function->output(i).get_node();
-        for (size_t i = 0; i < node->get_input_size(); ++i) {
-            std::string name = node->input_value(i).get_node()->get_friendly_name();
-            auto iter = std::find(requestedOutputs.begin(), requestedOutputs.end(), name);
-            if (iter != requestedOutputs.end()) {
-                requestedOutputs.erase(iter);
-                cnn.addOutput(name);
+    if (!hasNetOwner) {
+        for (size_t i = 0; i < ngraph_function->get_output_size(); ++i) {
+            auto node = ngraph_function->output(i).get_node();
+            for (size_t i = 0; i < node->get_input_size(); ++i) {
+                std::string name = node->input_value(i).get_node()->get_friendly_name();
+                auto iter = std::find(requestedOutputs.begin(), requestedOutputs.end(), name);
+                if (iter != requestedOutputs.end()) {
+                    requestedOutputs.erase(iter);
+                    cnn.addOutput(name);
+                }
             }
+        }
+    } else {
+        for (const auto& name : requestedOutputs)
+        {
+            cnn.addOutput(name);
         }
     }
     initPlugin(cnn);
