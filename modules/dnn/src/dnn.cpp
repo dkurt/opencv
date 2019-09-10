@@ -1966,23 +1966,6 @@ void initNgraphBackend()
         ieNode->net = net;
         ieNode->net->setNodePtr(&ieNode->node);
 
-        // Convert weights in FP16 for specific targets.
-        // if ((preferableTarget == DNN_TARGET_OPENCL_FP16 ||
-        //      preferableTarget == DNN_TARGET_MYRIAD ||
-        //      preferableTarget == DNN_TARGET_FPGA) && !fused)
-        // {
-        //     for (const std::string& name : {"weights", "biases"})
-        //     {
-        //         auto it = ieNode->layer.getParameters().find(name);
-        //         if (it != ieNode->layer.getParameters().end())
-        //         {
-        //             InferenceEngine::Blob::Ptr bp = it->second.as<InferenceEngine::Blob::Ptr>();
-        //             it->second = convertFp16(std::const_pointer_cast<InferenceEngine::Blob>(bp));
-        //         }
-        //     }
-        //
-        // }
-
         net->addBlobs(ld.inputBlobsWrappers);
         net->addBlobs(ld.outputBlobsWrappers);
         addNgraphOutputs(ld);
