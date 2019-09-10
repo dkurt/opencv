@@ -1748,9 +1748,10 @@ struct Net::Impl
     void addNgraphOutputs(LayerData &ld)
     {
         Ptr<InfEngineNgraphNet> layerNet;
-        if (ld.backendNodes.find(preferableBackend) != ld.backendNodes.end())
+        auto it = ld.backendNodes.find(preferableBackend);
+        if (it != ld.backendNodes.end())
         {
-            Ptr<BackendNode> node = ld.backendNodes[preferableBackend];
+            Ptr<BackendNode> node = it->second;
             if (!node.empty())
             {
                 Ptr<InfEngineNgraphNode> ieNode = node.dynamicCast<InfEngineNgraphNode>();
@@ -1790,7 +1791,6 @@ void initNgraphBackend()
     for (it = layers.begin(); it != layers.end(); ++it)
     {
         LayerData &ld = it->second;
-        std::cout << "ld " << ld.id << '\n';
         if (ld.id == 0)
         {
             CV_Assert((netInputLayer->outNames.empty() && ld.outputBlobsWrappers.size() == 1) ||
@@ -1906,7 +1906,7 @@ void initNgraphBackend()
                     // return only current inputs (not all)
                     auto inps = net->setInputs(inpLd.outputBlobs, inputNames);
                     for (auto& inp : inps) {
-                        inputNodes.push_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
+                        inputNodes.emplace_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
                     }
                 } else {
                     inputNodes.push_back(inpNode);
@@ -1924,11 +1924,9 @@ void initNgraphBackend()
                 }
                 auto inps = net->setInputs(inpLd.outputBlobs, inputNames);
                 for (auto& inp : inps) {
-                    std::cout << "node inp:  " << inp->get_friendly_name() << '\n';
                     // Layer_Test_ROIPooling.Accuracy has 2 inputs inpLD = 0, 0 -> has 4 inputNodes (input, rois, input, rois)
-                    inputNodes.push_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
+                    inputNodes.emplace_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
                 }
-                std::cout << "inputNodes " << inputNodes.size() << '\n';
             }
         }
 
@@ -1994,10 +1992,11 @@ void initNgraphBackend()
     for (MapIdToLayerData::reverse_iterator it = layers.rbegin(); it != layers.rend(); ++it)
     {
         LayerData &ld = it->second;
-        if (ld.backendNodes.find(preferableBackend) == ld.backendNodes.end())
+        auto iter = ld.backendNodes.find(preferableBackend);
+        if (iter == ld.backendNodes.end())
             continue;
 
-        Ptr<BackendNode>& node = ld.backendNodes[preferableBackend];
+        Ptr<BackendNode>& node = iter->second;
         if (node.empty())
             continue;
 

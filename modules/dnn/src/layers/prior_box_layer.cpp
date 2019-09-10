@@ -43,6 +43,10 @@
 #include "../precomp.hpp"
 #include "layers_common.hpp"
 #include "../op_inf_engine.hpp"
+#include "../ie_ngraph.hpp"
+#include <ngraph/op/experimental/layers/prior_box.hpp>
+#include <ngraph/op/experimental/layers/prior_box_clustered.hpp>
+
 #include <float.h>
 #include <algorithm>
 #include <cmath>
@@ -272,7 +276,7 @@ public:
 
     virtual bool supportBackend(int backendId) CV_OVERRIDE
     {
-        return backendId == DNN_BACKEND_OPENCV ||
+        return backendId == DNN_BACKEND_OPENCV || backendId == DNN_BACKEND_NGRAPH ||
                (backendId == DNN_BACKEND_INFERENCE_ENGINE && haveInfEngine() &&
                ( _explicitSizes || (_minSize.size() == 1 && _maxSize.size() <= 1)));
     }
@@ -544,6 +548,90 @@ public:
         }
     }
 #endif  // HAVE_INF_ENGINE
+
+#ifdef HAVE_INF_ENGINE
+    virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
+    {
+        if (_explicitSizes)
+        {
+            std::cout << "_________PriorBoxClustered_________" << '\n';
+            CV_Assert_N(!_boxWidths.empty(), !_boxHeights.empty(), !_variance.empty());
+            CV_Assert(_boxWidths.size() == _boxHeights.size());
+            ngraph::op::PriorBoxClusteredAttrs attrs;
+            attrs.widths = _boxWidths;
+            attrs.num_priors = _boxWidths.size();
+            attrs.heights = _boxHeights;
+            attrs.clip = _clip;
+            CV_CheckEQ(_offsetsX.size(), (size_t)1, ""); CV_CheckEQ(_offsetsY.size(), (size_t)1, ""); CV_CheckEQ(_offsetsX[0], _offsetsY[0], "");
+            attrs.offset = _offsetsX[0];
+            attrs.step_heights = _stepY;
+            attrs.step_widths = _stepX;
+            attrs.variances = _variance;
+
+            CV_Assert(nodes.size() == 2);
+            auto& layer = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
+            auto& image = nodes[1].dynamicCast<InfEngineNgraphNode>()->node;
+
+            std::vector<int64_t> l_shape(layer->get_shape().end() - 2, layer->get_shape().end());
+            auto layer_shape = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{2}, l_shape.data());
+
+            std::vector<int64_t> im_shape(image->get_shape().end() - 2, image->get_shape().end());
+            auto image_shape = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{2}, im_shape.data());
+
+            auto priorBox = std::make_shared<ngraph::op::PriorBoxClustered>(layer_shape, image_shape, attrs);
+            std::cout << "priorBox " << priorBox->get_shape() << '\n';
+
+            std::vector<int64_t> out_shape = {1};
+            out_shape.insert(out_shape.end(), priorBox->get_shape().begin(), priorBox->get_shape().end());
+            auto shape   = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
+                           ngraph::Shape{out_shape.size()}, out_shape.data());
+            auto reshape = std::make_shared<ngraph::op::DynReshape>(priorBox, shape);
+            std::cout << "reshape " << reshape->get_shape() << '\n';
+            return Ptr<BackendNode>(new InfEngineNgraphNode(reshape));
+        }
+        else
+        {
+            std::cout << "--------------PriorBox--------------------" << '\n';
+            CV_Assert(nodes.size() == 2);
+            ngraph::op::PriorBoxAttrs attrs;
+            attrs.min_size = _minSize;
+            attrs.max_size = _maxSize;
+            attrs.aspect_ratio = !_aspectRatios.empty()? _aspectRatios : std::vector<float>{1.0f};
+            attrs.clip = _clip;
+            attrs.flip = false;
+            attrs.variance = _variance;
+            CV_CheckEQ(_offsetsX.size(), (size_t)1, ""); CV_CheckEQ(_offsetsY.size(), (size_t)1, ""); CV_CheckEQ(_offsetsX[0], _offsetsY[0], "");
+            attrs.offset = _offsetsX[0];
+
+            CV_Assert(_stepX == _stepY);
+            attrs.step = _stepX;
+            attrs.scale_all_sizes = true;
+
+            auto layer = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
+            auto image = nodes[1].dynamicCast<InfEngineNgraphNode>()->node;
+            std::cout << "layer " << layer->get_shape() << '\n';
+            std::cout << "image " << image->get_shape() << '\n';
+
+            std::vector<int64_t> l_shape(layer->get_shape().end() - 2, layer->get_shape().end());
+            auto layer_shape = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{2}, l_shape.data());
+
+            std::vector<int64_t> im_shape(image->get_shape().end() - 2, image->get_shape().end());
+            auto image_shape = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{2}, im_shape.data());
+
+            auto priorBox = std::make_shared<ngraph::op::PriorBox>(layer_shape, image_shape, attrs);
+            std::cout << "priorBox " << priorBox->get_shape() << '\n';
+
+            std::vector<int64_t> out_shape = {1};
+            out_shape.insert(out_shape.end(), priorBox->get_shape().begin(), priorBox->get_shape().end());
+            auto shape   = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
+                           ngraph::Shape{out_shape.size()}, out_shape.data());
+            auto reshape = std::make_shared<ngraph::op::DynReshape>(priorBox, shape);
+            std::cout << "reshape " << reshape->get_shape() << '\n';
+            return Ptr<BackendNode>(new InfEngineNgraphNode(reshape));
+        }
+    }
+#endif  // HAVE_INF_ENGINE
+
 
     virtual int64 getFLOPS(const std::vector<MatShape> &inputs,
                            const std::vector<MatShape> &outputs) const CV_OVERRIDE
