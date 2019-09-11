@@ -206,6 +206,15 @@ testing::internal::ParamGenerator< tuple<Backend, Target> > dnnBackendsAndTarget
                 continue;
             targets.push_back(make_tuple(DNN_BACKEND_INFERENCE_ENGINE, *i));
         }
+
+        available = getAvailableTargets(DNN_BACKEND_NGRAPH);
+        for (std::vector< Target >::const_iterator i = available.begin(); i != available.end(); ++i)
+        {
+            if (*i == DNN_TARGET_MYRIAD && !withVPU)
+                continue;
+            targets.push_back(make_tuple(DNN_BACKEND_NGRAPH, *i));
+        }
+
     }
 #else
     CV_UNUSED(withInferenceEngine);

@@ -1886,6 +1886,7 @@ void initNgraphBackend()
         for (int i = 0; i < ld.inputBlobsId.size(); ++i)
         {
             LayerData &inpLd = layers[ld.inputBlobsId[i].lid];
+            std::cout << "out size = " << inpLd.outputBlobsWrappers.size() << '\n';
             std::cout << "inpLd  " << inpLd.id << '\n';
             Ptr<BackendNode> inpNode = inpLd.backendNodes[preferableBackend];
             if (!inpNode.empty())
@@ -1898,13 +1899,19 @@ void initNgraphBackend()
                         net = Ptr<InfEngineNgraphNet>(new InfEngineNgraphNet());
                     }
                     std::vector<std::string> inputNames;
+                    std::vector<cv::Mat> inputs;
                     for (int j = 0; j < inpLd.outputBlobsWrappers.size(); j++) {
                         Ptr<NgraphBackendWrapper> inpWrapper = inpLd.outputBlobsWrappers[j].dynamicCast<NgraphBackendWrapper>();
-                        inputNames.push_back(inpWrapper->dataPtr->getName());
+                        auto iter = std::find(inputNames.begin(), inputNames.end(), inpWrapper->dataPtr->getName());
+                        // for split layer
+                        if (iter == inputNames.end()) {
+                            inputNames.push_back(inpWrapper->dataPtr->getName());
+                            inputs.push_back(inpLd.outputBlobs[j]);
+                        }
                     }
 
                     // return only current inputs (not all)
-                    auto inps = net->setInputs(inpLd.outputBlobs, inputNames);
+                    auto inps = net->setInputs(inputs, inputNames);
                     for (auto& inp : inps) {
                         inputNodes.emplace_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
                     }
@@ -1918,11 +1925,16 @@ void initNgraphBackend()
                 }
 
                 std::vector<std::string> inputNames;
+                std::vector<cv::Mat> inputs;
                 for (int j = 0; j < inpLd.outputBlobsWrappers.size(); j++) {
                     Ptr<NgraphBackendWrapper> inpWrapper = inpLd.outputBlobsWrappers[j].dynamicCast<NgraphBackendWrapper>();
-                    inputNames.push_back(inpWrapper->dataPtr->getName());
+                    auto iter = std::find(inputNames.begin(), inputNames.end(), inpWrapper->dataPtr->getName());
+                    if (iter == inputNames.end()) {
+                        inputNames.push_back(inpWrapper->dataPtr->getName());
+                        inputs.push_back(inpLd.outputBlobs[j]);
+                    }
                 }
-                auto inps = net->setInputs(inpLd.outputBlobs, inputNames);
+                auto inps = net->setInputs(inputs, inputNames);
                 for (auto& inp : inps) {
                     // Layer_Test_ROIPooling.Accuracy has 2 inputs inpLD = 0, 0 -> has 4 inputNodes (input, rois, input, rois)
                     inputNodes.emplace_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
@@ -2669,7 +2681,7 @@ void initNgraphBackend()
                 }
                 else if (preferableBackend == DNN_BACKEND_NGRAPH)
                 {
-                    forwardNgraph(ld.outputBlobsWrappers, node);
+                    forwardNgraph(ld.outputBlobsWrappers, node, isAsync);
                 }
                 else
                 {
@@ -2833,10 +2845,15 @@ void initNgraphBackend()
             // Transfer data to CPU if it's require.
             ld.outputBlobsWrappers[pin.oid]->copyToHost();
         }
-        CV_Assert(preferableBackend == DNN_BACKEND_INFERENCE_ENGINE);
+        CV_Assert(preferableBackend == DNN_BACKEND_INFERENCE_ENGINE || preferableBackend == DNN_BACKEND_NGRAPH);
 
-        Ptr<InfEngineBackendWrapper> wrapper = ld.outputBlobsWrappers[pin.oid].dynamicCast<InfEngineBackendWrapper>();
-        return std::move(wrapper->futureMat);
+        if (preferableBackend == DNN_BACKEND_INFERENCE_ENGINE) {
+            Ptr<InfEngineBackendWrapper> wrapper = ld.outputBlobsWrappers[pin.oid].dynamicCast<InfEngineBackendWrapper>();
+            return std::move(wrapper->futureMat);
+        } else {
+            Ptr<NgraphBackendWrapper> wrapper = ld.outputBlobsWrappers[pin.oid].dynamicCast<NgraphBackendWrapper>();
+            return std::move(wrapper->futureMat);
+        }
 #else
         CV_Error(Error::StsNotImplemented, "DNN_BACKEND_INFERENCE_ENGINE backend is required");
 #endif
@@ -2996,7 +3013,7 @@ AsyncArray Net::forwardAsync(const String& outputName)
     std::vector<LayerPin> pins(1, impl->getPinByAlias(layerName));
     impl->setUpNet(pins);
 
-    if (impl->preferableBackend != DNN_BACKEND_INFERENCE_ENGINE)
+    if (!(impl->preferableBackend == DNN_BACKEND_INFERENCE_ENGINE || impl->preferableBackend == DNN_BACKEND_NGRAPH))
         CV_Error(Error::StsNotImplemented, "Asynchronous forward for backend which is different from DNN_BACKEND_INFERENCE_ENGINE");
 
     impl->isAsync = true;
