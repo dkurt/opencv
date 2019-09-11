@@ -213,6 +213,22 @@ void InfEngineNgraphNet::init(int targetId)
             cnn.addOutput(name);
         }
     }
+
+    for (const auto& it : cnn.getInputsInfo())
+    {
+        const std::string& name = it.first;
+        auto blobIt = allBlobs.find(name);
+        CV_Assert(blobIt != allBlobs.end());
+        it.second->setPrecision(blobIt->second->getTensorDesc().getPrecision());
+    }
+    for (const auto& it : cnn.getOutputsInfo())
+    {
+        const std::string& name = it.first;
+        auto blobIt = allBlobs.find(name);
+        CV_Assert(blobIt != allBlobs.end());
+        it.second->setPrecision(blobIt->second->getTensorDesc().getPrecision());  // Should be always FP32
+    }
+
     initPlugin(cnn);
 }
 
@@ -223,7 +239,12 @@ ngraph::ParameterVector InfEngineNgraphNet::setInputs(const std::vector<cv::Mat>
     for (size_t i = 0; i < inputs.size(); i++)
     {
         std::vector<size_t> shape(&inputs[i].size[0], &inputs[i].size[0] + inputs[i].dims);
-        auto type = inputs[i].type() == CV_16S ? ngraph::element::f16 : ngraph::element::f32;
+        auto type = ngraph::element::f32;
+        if (inputs[i].type() == CV_16S) {
+            type = ngraph::element::f16 ;
+        } else if (inputs[i].type() == CV_8U) {
+            type = ngraph::element::u8;
+        }
 
         auto inp = std::make_shared<ngraph::op::Parameter>(type, ngraph::Shape(shape));
         inp->set_friendly_name(names[i]);
@@ -502,6 +523,25 @@ void NgraphBackendWrapper::setHostDirty()
 
 }
 
+InferenceEngine::Blob::Ptr copyBlob(const InferenceEngine::Blob::Ptr& blob)
+{
+    InferenceEngine::Blob::Ptr copy;
+    auto description = blob->getTensorDesc();
+    InferenceEngine::Precision precision = description.getPrecision();
+    if (precision == InferenceEngine::Precision::FP32)
+    {
+        copy = InferenceEngine::make_shared_blob<float>(description);
+    }
+    else if (precision == InferenceEngine::Precision::U8)
+    {
+        copy = InferenceEngine::make_shared_blob<uint8_t>(description);
+    }
+    else
+        CV_Error(Error::StsNotImplemented, "Unsupported blob precision");
+    copy->allocate();
+    return copy;
+}
+
 InferenceEngine::DataPtr ngraphDataNode(const Ptr<BackendWrapper>& ptr)
 {
     CV_Assert(!ptr.empty());
@@ -512,13 +552,13 @@ InferenceEngine::DataPtr ngraphDataNode(const Ptr<BackendWrapper>& ptr)
 
 
 void forwardNgraph(const std::vector<Ptr<BackendWrapper> >& outBlobsWrappers,
-                      Ptr<BackendNode>& node)
+                      Ptr<BackendNode>& node, bool isAsync)
 {
 #ifdef HAVE_INF_ENGINE
     CV_Assert(!node.empty());
     Ptr<InfEngineNgraphNode> ieNode = node.dynamicCast<InfEngineNgraphNode>();
     CV_Assert(!ieNode.empty());
-    ieNode->net->forward(outBlobsWrappers);
+    ieNode->net->forward(outBlobsWrappers, isAsync);
 #endif  // HAVE_INF_ENGINE
 }
 
@@ -533,8 +573,37 @@ void InfEngineNgraphNet::addBlobs(const std::vector<cv::Ptr<BackendWrapper> >& p
     }
 }
 
+void InfEngineNgraphNet::NgraphReqWrapper::makePromises(const std::vector<Ptr<BackendWrapper> >& outsWrappers)
+{
+    auto outs = ngraphWrappers(outsWrappers);
+    outProms.clear();
+    outProms.resize(outs.size());
+    outsNames.resize(outs.size());
+    for (int i = 0; i < outs.size(); ++i)
+    {
+        outs[i]->futureMat = outProms[i].getArrayResult();
+        outsNames[i] = outs[i]->dataPtr->getName();
+    }
+}
 
-void InfEngineNgraphNet::forward(const std::vector<Ptr<BackendWrapper> >& outBlobsWrapper)
+Mat ngraphBlobToMat(const InferenceEngine::Blob::Ptr& blob)
+{
+    std::vector<size_t> dims = blob->getTensorDesc().getDims();
+    std::vector<int> size(dims.begin(), dims.end());
+    auto precision = blob->getTensorDesc().getPrecision();
+
+    int type = -1;
+    switch (precision)
+    {
+        case InferenceEngine::Precision::FP32: type = CV_32F; break;
+        case InferenceEngine::Precision::U8: type = CV_8U; break;
+        default:
+            CV_Error(Error::StsNotImplemented, "Unsupported blob precision");
+    }
+    return Mat(size, type, (void*)blob->buffer());
+}
+
+void InfEngineNgraphNet::forward(const std::vector<Ptr<BackendWrapper> >& outBlobsWrappers, bool isAsync)
 {
     // Look for finished requests.
     Ptr<NgraphReqWrapper> reqWrapper;
@@ -565,24 +634,90 @@ void InfEngineNgraphNet::forward(const std::vector<Ptr<BackendWrapper> >& outBlo
             const std::string& name = it.first;
             auto blobIt = allBlobs.find(name);
             CV_Assert(blobIt != allBlobs.end());
-            inpBlobs[name] = blobIt->second;
+            inpBlobs[name] = isAsync ? copyBlob(blobIt->second) : blobIt->second;
         }
         for (const auto& it : cnn.getOutputsInfo())
         {
             const std::string& name = it.first;
             auto blobIt = allBlobs.find(name);
             CV_Assert(blobIt != allBlobs.end());
-            outBlobs[name] = blobIt->second;
+            outBlobs[name] = isAsync ? copyBlob(blobIt->second) : blobIt->second;
         }
         reqWrapper->req.SetInput(inpBlobs);
         reqWrapper->req.SetOutput(outBlobs);
 
-        // InferenceEngine::IInferRequest::Ptr infRequestPtr = reqWrapper->req;
-        // infRequestPtr->SetUserData(reqWrapper.get(), 0);
+        InferenceEngine::IInferRequest::Ptr infRequestPtr = reqWrapper->req;
+        infRequestPtr->SetUserData(reqWrapper.get(), 0);
 
+        infRequestPtr->SetCompletionCallback(
+            [](InferenceEngine::IInferRequest::Ptr request, InferenceEngine::StatusCode status)
+            {
+                NgraphReqWrapper* wrapper;
+                request->GetUserData((void**)&wrapper, 0);
+                CV_Assert(wrapper && "Internal error");
+
+                size_t processedOutputs = 0;
+                try
+                {
+                    for (; processedOutputs < wrapper->outProms.size(); ++processedOutputs)
+                    {
+                        const std::string& name = wrapper->outsNames[processedOutputs];
+                        Mat m = ngraphBlobToMat(wrapper->req.GetBlob(name));
+
+                        try
+                        {
+                            CV_Assert(status == InferenceEngine::StatusCode::OK);
+                            wrapper->outProms[processedOutputs].setValue(m.clone());
+                        }
+                        catch (...)
+                        {
+                            try {
+                                wrapper->outProms[processedOutputs].setException(std::current_exception());
+                            } catch(...) {
+                                CV_LOG_ERROR(NULL, "DNN: Exception occured during async inference exception propagation");
+                            }
+                        }
+                    }
+                }
+                catch (...)
+                {
+                    std::exception_ptr e = std::current_exception();
+                    for (; processedOutputs < wrapper->outProms.size(); ++processedOutputs)
+                    {
+                        try {
+                            wrapper->outProms[processedOutputs].setException(e);
+                        } catch(...) {
+                            CV_LOG_ERROR(NULL, "DNN: Exception occured during async inference exception propagation");
+                        }
+                    }
+                }
+                wrapper->isReady = true;
+            }
+        );
     }
 
-    reqWrapper->req.Infer();
+    if (isAsync)
+    {
+        // Copy actual data to infer request's input blobs.
+        for (const auto& it : cnn.getInputsInfo())
+        {
+            const std::string& name = it.first;
+            auto blobIt = allBlobs.find(name);
+            Mat srcMat = ngraphBlobToMat(blobIt->second);
+            Mat dstMat = ngraphBlobToMat(reqWrapper->req.GetBlob(name));
+            srcMat.copyTo(dstMat);
+        }
+
+        // Set promises to output blobs wrappers.
+        reqWrapper->makePromises(outBlobsWrappers);
+
+        reqWrapper->isReady = false;
+        reqWrapper->req.StartAsync();
+    }
+    else
+    {
+        reqWrapper->req.Infer();
+    }
 }
 
 #endif

@@ -85,7 +85,7 @@ public:
     bool isInitialized();
     void init(int targetId);
 
-    void forward(const std::vector<Ptr<BackendWrapper> >& outBlobsWrappers);
+    void forward(const std::vector<Ptr<BackendWrapper> >& outBlobsWrappers, bool isAsync);
 
     void initPlugin(InferenceEngine::CNNNetwork& net);
     ngraph::ParameterVector setInputs(const std::vector<cv::Mat>& inputs, const std::vector<std::string>& names);
@@ -159,6 +159,7 @@ public:
 
     InferenceEngine::DataPtr dataPtr;
     InferenceEngine::Blob::Ptr blob;
+    AsyncArray futureMat;
 };
 
 InferenceEngine::DataPtr ngraphDataNode(const Ptr<BackendWrapper>& ptr);
@@ -188,7 +189,7 @@ private:
 #endif
 
 void forwardNgraph(const std::vector<Ptr<BackendWrapper> >& outBlobsWrappers,
-                      Ptr<BackendNode>& node);
+                   Ptr<BackendNode>& node, bool isAsync);
 }}  // namespace dnn, namespace cv
 
 
