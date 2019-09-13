@@ -1885,9 +1885,11 @@ void initNgraphBackend()
         std::vector<Ptr<BackendNode>> inputNodes;
         for (int i = 0; i < ld.inputBlobsId.size(); ++i)
         {
+            // Layer_Test_ROIPooling.Accuracy has 2 inputs inpLD = 0, 0 -> has 4 inputNodes (input, rois, input, rois)
+            if (inputNodes.size() == ld.inputBlobsId.size()) {
+                break;
+            }
             LayerData &inpLd = layers[ld.inputBlobsId[i].lid];
-            std::cout << "out size = " << inpLd.outputBlobsWrappers.size() << '\n';
-            std::cout << "inpLd  " << inpLd.id << '\n';
             Ptr<BackendNode> inpNode = inpLd.backendNodes[preferableBackend];
             if (!inpNode.empty())
             {
@@ -1900,16 +1902,24 @@ void initNgraphBackend()
                     }
                     std::vector<std::string> inputNames;
                     std::vector<cv::Mat> inputs;
-                    for (int j = 0; j < inpLd.outputBlobsWrappers.size(); j++) {
-                        Ptr<NgraphBackendWrapper> inpWrapper = inpLd.outputBlobsWrappers[j].dynamicCast<NgraphBackendWrapper>();
-                        auto iter = std::find(inputNames.begin(), inputNames.end(), inpWrapper->dataPtr->getName());
-                        // for split layer
-                        if (iter == inputNames.end()) {
-                            inputNames.push_back(inpWrapper->dataPtr->getName());
-                            inputs.push_back(inpLd.outputBlobs[j]);
-                        }
-                    }
 
+                    auto cons = std::find_if(inpLd.consumers.begin(), inpLd.consumers.end(), [&ld] (const LayerPin& lp) {
+                        return lp.lid == ld.id;
+                    });
+                    while (cons != inpLd.consumers.end()) {
+                        int cons_inp = cons->oid;
+                        Ptr<NgraphBackendWrapper> inpWrapper = inpLd.outputBlobsWrappers[cons_inp].dynamicCast<NgraphBackendWrapper>();
+                        auto iter = std::find(inputNames.begin(), inputNames.end(), inpWrapper->dataPtr->getName());
+                        if (iter == inputNames.end()) {
+                            std::cout << "name " <<inpWrapper->dataPtr->getName() << '\n';
+                            inputNames.push_back(inpWrapper->dataPtr->getName());
+                            inputs.push_back(inpLd.outputBlobs[cons_inp]);
+                        }
+
+                        cons = std::find_if(cons + 1, inpLd.consumers.end(), [&ld] (const LayerPin& lp) {
+                            return lp.lid == ld.id;
+                        });
+                    }
                     // return only current inputs (not all)
                     auto inps = net->setInputs(inputs, inputNames);
                     for (auto& inp : inps) {
@@ -1926,17 +1936,26 @@ void initNgraphBackend()
 
                 std::vector<std::string> inputNames;
                 std::vector<cv::Mat> inputs;
-                for (int j = 0; j < inpLd.outputBlobsWrappers.size(); j++) {
-                    Ptr<NgraphBackendWrapper> inpWrapper = inpLd.outputBlobsWrappers[j].dynamicCast<NgraphBackendWrapper>();
+
+                auto cons = std::find_if(inpLd.consumers.begin(), inpLd.consumers.end(), [&ld] (const LayerPin& lp) {
+                    return lp.lid == ld.id;
+                });
+                while (cons != inpLd.consumers.end()) {
+                    int cons_inp = cons->oid;
+                    Ptr<NgraphBackendWrapper> inpWrapper = inpLd.outputBlobsWrappers[cons_inp].dynamicCast<NgraphBackendWrapper>();
                     auto iter = std::find(inputNames.begin(), inputNames.end(), inpWrapper->dataPtr->getName());
                     if (iter == inputNames.end()) {
+                        std::cout << "name " <<inpWrapper->dataPtr->getName() << '\n';
                         inputNames.push_back(inpWrapper->dataPtr->getName());
-                        inputs.push_back(inpLd.outputBlobs[j]);
+                        inputs.push_back(inpLd.outputBlobs[cons_inp]);
                     }
+
+                    cons = std::find_if(cons + 1, inpLd.consumers.end(), [&ld] (const LayerPin& lp) {
+                        return lp.lid == ld.id;
+                    });
                 }
                 auto inps = net->setInputs(inputs, inputNames);
                 for (auto& inp : inps) {
-                    // Layer_Test_ROIPooling.Accuracy has 2 inputs inpLD = 0, 0 -> has 4 inputNodes (input, rois, input, rois)
                     inputNodes.emplace_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
                 }
             }
