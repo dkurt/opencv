@@ -1893,71 +1893,38 @@ void initNgraphBackend()
             Ptr<BackendNode> inpNode = inpLd.backendNodes[preferableBackend];
             if (!inpNode.empty())
             {
-                Ptr<InfEngineNgraphNode> ieInpNode = inpNode.dynamicCast<InfEngineNgraphNode>();
-                CV_Assert(!ieInpNode.empty()); CV_Assert(!ieInpNode->net.empty());
-                if (ieInpNode->net != net)
-                {
-                    if (net.empty()) {
-                        net = Ptr<InfEngineNgraphNet>(new InfEngineNgraphNet());
-                    }
-                    std::vector<std::string> inputNames;
-                    std::vector<cv::Mat> inputs;
-
-                    auto cons = std::find_if(inpLd.consumers.begin(), inpLd.consumers.end(), [&ld] (const LayerPin& lp) {
-                        return lp.lid == ld.id;
-                    });
-                    while (cons != inpLd.consumers.end()) {
-                        int cons_inp = cons->oid;
-                        Ptr<NgraphBackendWrapper> inpWrapper = inpLd.outputBlobsWrappers[cons_inp].dynamicCast<NgraphBackendWrapper>();
-                        auto iter = std::find(inputNames.begin(), inputNames.end(), inpWrapper->dataPtr->getName());
-                        if (iter == inputNames.end()) {
-                            std::cout << "name " <<inpWrapper->dataPtr->getName() << '\n';
-                            inputNames.push_back(inpWrapper->dataPtr->getName());
-                            inputs.push_back(inpLd.outputBlobs[cons_inp]);
-                        }
-
-                        cons = std::find_if(cons + 1, inpLd.consumers.end(), [&ld] (const LayerPin& lp) {
-                            return lp.lid == ld.id;
-                        });
-                    }
-                    // return only current inputs (not all)
-                    auto inps = net->setInputs(inputs, inputNames);
-                    for (auto& inp : inps) {
-                        inputNodes.emplace_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
-                    }
-                } else {
+                 Ptr<InfEngineNgraphNode> ieInpNode = inpNode.dynamicCast<InfEngineNgraphNode>();
+                 CV_Assert(!ieInpNode.empty()); CV_Assert(!ieInpNode->net.empty());
+                 if (ieInpNode->net == net) {
                     inputNodes.push_back(inpNode);
-                }
-            } else  { // node from another backend or empty net
-                std::cout << "net.empty() " << net.empty() << '\n';
-                if (net.empty()) {
-                    net = Ptr<InfEngineNgraphNet>(new InfEngineNgraphNet());
-                }
+                    continue;
+                 }
+            }
 
-                std::vector<std::string> inputNames;
-                std::vector<cv::Mat> inputs;
+            if (net.empty()) {
+                net = Ptr<InfEngineNgraphNet>(new InfEngineNgraphNet());
+            }
+            std::vector<std::string> inputNames;
+            std::vector<cv::Mat> inputs;
 
-                auto cons = std::find_if(inpLd.consumers.begin(), inpLd.consumers.end(), [&ld] (const LayerPin& lp) {
-                    return lp.lid == ld.id;
-                });
-                while (cons != inpLd.consumers.end()) {
-                    int cons_inp = cons->oid;
-                    Ptr<NgraphBackendWrapper> inpWrapper = inpLd.outputBlobsWrappers[cons_inp].dynamicCast<NgraphBackendWrapper>();
-                    auto iter = std::find(inputNames.begin(), inputNames.end(), inpWrapper->dataPtr->getName());
-                    if (iter == inputNames.end()) {
-                        std::cout << "name " <<inpWrapper->dataPtr->getName() << '\n';
-                        inputNames.push_back(inpWrapper->dataPtr->getName());
-                        inputs.push_back(inpLd.outputBlobs[cons_inp]);
-                    }
+            auto curr_pos = inpLd.consumers.begin();
+            auto compare = [&ld] (const LayerPin& lp) { return lp.lid == ld.id; };
+            auto cons = curr_pos;
+            while ((cons = std::find_if(curr_pos, inpLd.consumers.end(), compare)) != inpLd.consumers.end()) {
+                int cons_inp = cons->oid;
+                Ptr<NgraphBackendWrapper> inpWrapper = inpLd.outputBlobsWrappers[cons_inp].dynamicCast<NgraphBackendWrapper>();
+                auto iter = std::find(inputNames.begin(), inputNames.end(), inpWrapper->dataPtr->getName());
+                if (iter == inputNames.end()) {
+                    std::cout << "name " <<inpWrapper->dataPtr->getName() << '\n';
+                    inputNames.push_back(inpWrapper->dataPtr->getName());
+                    inputs.push_back(inpLd.outputBlobs[cons_inp]);
+                }
+                curr_pos = cons + 1;
+            }
 
-                    cons = std::find_if(cons + 1, inpLd.consumers.end(), [&ld] (const LayerPin& lp) {
-                        return lp.lid == ld.id;
-                    });
-                }
-                auto inps = net->setInputs(inputs, inputNames);
-                for (auto& inp : inps) {
-                    inputNodes.emplace_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
-                }
+            auto inps = net->setInputs(inputs, inputNames);
+            for (auto& inp : inps) {
+                inputNodes.emplace_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
             }
         }
 
