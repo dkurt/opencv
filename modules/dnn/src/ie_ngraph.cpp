@@ -43,14 +43,10 @@ ngraphWrappers(const std::vector<Ptr<BackendWrapper> >& ptrs)
 }
 
 InfEngineNgraphNode::InfEngineNgraphNode(std::shared_ptr<ngraph::Node>&& _node)
-    : BackendNode(DNN_BACKEND_NGRAPH), node(std::move(_node)) {
-
-    }
+    : BackendNode(DNN_BACKEND_NGRAPH), node(std::move(_node)) {}
 
     InfEngineNgraphNode::InfEngineNgraphNode(std::shared_ptr<ngraph::Node>& _node)
-        : BackendNode(DNN_BACKEND_NGRAPH), node(_node) {
-
-        }
+        : BackendNode(DNN_BACKEND_NGRAPH), node(_node) {}
 
 void InfEngineNgraphNode::setName(const std::string& name) {
     node->set_friendly_name(name);
@@ -90,8 +86,8 @@ void InfEngineNgraphNet::setNodePtr(std::shared_ptr<ngraph::Node>* ptr) {
      }
  }
 
-
-void InfEngineNgraphNet::dfs(std::shared_ptr<ngraph::Node>& node, std::vector<std::shared_ptr<ngraph::Node>>& comp,
+void InfEngineNgraphNet::dfs(std::shared_ptr<ngraph::Node>& node,
+                             std::vector<std::shared_ptr<ngraph::Node>>& comp,
                              std::unordered_map<std::string, bool>& used) {
     used[node->get_friendly_name()] = true;
     comp.push_back(node);
@@ -135,7 +131,7 @@ void InfEngineNgraphNet::createNet(int targetId) {
         for (auto& node : unconnectedNodes)
         {
             auto out = std::make_shared<ngraph::op::Result>(node);
-            outs.emplace_back(out);
+            outs.push_back(out);
         }
         ngraph_function = std::make_shared<ngraph::Function>(outs, inputs_vec);
 
@@ -198,8 +194,8 @@ void InfEngineNgraphNet::init(int targetId)
     if (!hasNetOwner) {
         for (size_t i = 0; i < ngraph_function->get_output_size(); ++i) {
             auto node = ngraph_function->output(i).get_node();
-            for (size_t i = 0; i < node->get_input_size(); ++i) {
-                std::string name = node->input_value(i).get_node()->get_friendly_name();
+            for (size_t j = 0; j < node->get_input_size(); ++j) {
+                std::string name = node->input_value(j).get_node()->get_friendly_name();
                 auto iter = std::find(requestedOutputs.begin(), requestedOutputs.end(), name);
                 if (iter != requestedOutputs.end()) {
                     requestedOutputs.erase(iter);
@@ -357,7 +353,7 @@ void resetMyriadDevice()
 void InfEngineNgraphNet::initPlugin(InferenceEngine::CNNNetwork& net)
 {
     CV_Assert(!isInitialized());  // some nets
-    net.serialize("/tmp/icnn.xml", "/tmp/icnn.bin");
+    // net.serialize("/tmp/icnn.xml", "/tmp/icnn.bin");
 
     try
     {
