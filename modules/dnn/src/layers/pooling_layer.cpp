@@ -48,6 +48,7 @@
 
 #include "../ie_ngraph.hpp"
 #include <ngraph/op/experimental/layers/roi_pooling.hpp>
+#include <ngraph/op/experimental/layers/psroi_pooling.hpp>
 
 #include <float.h>
 #include <algorithm>
@@ -186,7 +187,7 @@ public:
 #endif
         }
         else if (backendId == DNN_BACKEND_NGRAPH) {
-            return type == MAX || type == AVE || type == ROI;
+            return type != STOCHASTIC;
         }
         else
             return (kernel_size.size() == 3 && backendId == DNN_BACKEND_OPENCV && preferableTarget == DNN_TARGET_CPU) ||
@@ -328,7 +329,7 @@ public:
         {
             InferenceEngine::Builder::PSROIPoolingLayer ieLayer(name);
             ieLayer.setSpatialScale(spatialScale);
-            // ieLayer.setOutputDim(psRoiOutChannels);
+            ieLayer.setOutputDim(psRoiOutChannels);
             ieLayer.setGroupSize(pooledSize.width);
             ieLayer.setInputPorts(std::vector<InferenceEngine::Port>(2));
             return Ptr<BackendNode>(new InfEngineBackendNode(ieLayer));
@@ -369,6 +370,12 @@ virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inp
         auto roi = std::make_shared<ngraph::op::ROIPooling>(ieInpNode, coords,
                    ngraph::Shape{(size_t)pooledSize.height, (size_t)pooledSize.width}, spatialScale, "max");
         return Ptr<BackendNode>(new InfEngineNgraphNode(roi));
+    }
+    else if (type == PSROI) {
+        auto& coords = nodes[1].dynamicCast<InfEngineNgraphNode>()->node;
+        auto psroi = std::make_shared<ngraph::op::PSROIPooling>(ieInpNode, coords,
+                     (size_t)psRoiOutChannels, (size_t)pooledSize.width, spatialScale, 1, 1, "average");
+        return Ptr<BackendNode>(new InfEngineNgraphNode(psroi));
     }
     else
         CV_Error(Error::StsNotImplemented, "Unsupported pooling type");
