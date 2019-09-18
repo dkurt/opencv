@@ -128,13 +128,11 @@ private:
     bool hasNetOwner;
     std::vector<std::string> requestedOutputs;
     std::unordered_set<std::shared_ptr<ngraph::Node>> unconnectedNodes;
-
 };
 
 class InfEngineNgraphNode : public BackendNode
 {
 public:
-
     InfEngineNgraphNode(std::shared_ptr<ngraph::Node>&& _node);
     InfEngineNgraphNode(std::shared_ptr<ngraph::Node>& _node);
 

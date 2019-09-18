@@ -552,6 +552,19 @@ public:
 #ifdef HAVE_INF_ENGINE
     virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
+        CV_Assert(nodes.size() == 2);
+        auto layer = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
+        auto image = nodes[1].dynamicCast<InfEngineNgraphNode>()->node;
+        auto layer_shape = std::make_shared<ngraph::op::ShapeOf>(layer);
+        auto image_shape = std::make_shared<ngraph::op::ShapeOf>(image);
+
+        auto lower_bounds = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{1}, std::vector<int64_t>{2});
+        auto upper_bounds = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{1}, std::vector<int64_t>{4});
+        auto strides      = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{1}, std::vector<int64_t>{1});
+
+        auto slice_layer = std::make_shared<ngraph::op::DynSlice>(layer_shape, lower_bounds, upper_bounds, strides);
+        auto slice_image = std::make_shared<ngraph::op::DynSlice>(image_shape, lower_bounds, upper_bounds, strides);
+
         if (_explicitSizes)
         {
             CV_Assert_N(!_boxWidths.empty(), !_boxHeights.empty(), !_variance.empty());
@@ -567,25 +580,11 @@ public:
             attrs.step_widths = _stepX;
             attrs.variances = _variance;
 
-            CV_Assert(nodes.size() == 2);
-            auto& layer = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
-            auto& image = nodes[1].dynamicCast<InfEngineNgraphNode>()->node;
-
-            auto layer_shape = std::make_shared<ngraph::op::ShapeOf>(layer);
-            auto image_shape = std::make_shared<ngraph::op::ShapeOf>(image);
-
-            auto lower_bounds = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{1}, std::vector<int64_t>{2});
-            auto upper_bounds = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{1}, std::vector<int64_t>{4});
-            auto strides      = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{1}, std::vector<int64_t>{1});
-
-            auto slice_layer = std::make_shared<ngraph::op::DynSlice>(layer_shape, lower_bounds, upper_bounds, strides);
-            auto slice_image = std::make_shared<ngraph::op::DynSlice>(image_shape, lower_bounds, upper_bounds, strides);
-            auto priorBox    = std::make_shared<ngraph::op::PriorBoxClustered>(slice_layer, slice_image, attrs);
+            auto priorBox = std::make_shared<ngraph::op::PriorBoxClustered>(slice_layer, slice_image, attrs);
             return Ptr<BackendNode>(new InfEngineNgraphNode(priorBox));
         }
         else
         {
-            CV_Assert(nodes.size() == 2);
             ngraph::op::PriorBoxAttrs attrs;
             attrs.min_size = _minSize;
             attrs.max_size = _maxSize;
@@ -600,19 +599,7 @@ public:
             attrs.step = _stepX;
             attrs.scale_all_sizes = !_aspectRatios.empty(); //true;
 
-            auto layer = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
-            auto image = nodes[1].dynamicCast<InfEngineNgraphNode>()->node;
-
-            auto layer_shape = std::make_shared<ngraph::op::ShapeOf>(layer);
-            auto image_shape = std::make_shared<ngraph::op::ShapeOf>(image);
-
-            auto lower_bounds = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{1}, std::vector<int64_t>{2});
-            auto upper_bounds = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{1}, std::vector<int64_t>{4});
-            auto strides      = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{1}, std::vector<int64_t>{1});
-
-            auto slice_layer = std::make_shared<ngraph::op::DynSlice>(layer_shape, lower_bounds, upper_bounds, strides);
-            auto slice_image = std::make_shared<ngraph::op::DynSlice>(image_shape, lower_bounds, upper_bounds, strides);
-            auto priorBox    = std::make_shared<ngraph::op::PriorBox>(slice_layer, slice_image, attrs);
+            auto priorBox = std::make_shared<ngraph::op::PriorBox>(slice_layer, slice_image, attrs);
             return Ptr<BackendNode>(new InfEngineNgraphNode(priorBox));
         }
     }

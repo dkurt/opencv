@@ -57,6 +57,7 @@
 namespace ngraph {
 namespace op {
 
+#ifdef HAVE_INF_ENGINE
 class Dummy : public Op {
 public:
     Dummy() : Op("Dummy", {}) {
@@ -70,10 +71,10 @@ public:
     std::shared_ptr<Node> copy_with_new_args(const NodeVector& new_args) const override {
         if (!new_args.empty())
             throw ngraph_error("Incorrect number of new arguments");
-
         return std::make_shared<Dummy>();
     }
 };
+#endif
 
 }  // namespace op
 }  // namespace ngraph
