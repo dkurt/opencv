@@ -276,7 +276,7 @@ public:
 
     virtual bool supportBackend(int backendId) CV_OVERRIDE
     {
-        return backendId == DNN_BACKEND_OPENCV || backendId == DNN_BACKEND_NGRAPH ||
+        return backendId == DNN_BACKEND_OPENCV || (backendId == DNN_BACKEND_NGRAPH && (_explicitSizes || _stepX == _stepY)) ||
                (backendId == DNN_BACKEND_INFERENCE_ENGINE && haveInfEngine() &&
                ( _explicitSizes || (_minSize.size() == 1 && _maxSize.size() <= 1)));
     }
@@ -597,7 +597,6 @@ public:
             CV_CheckEQ(_offsetsX.size(), (size_t)1, ""); CV_CheckEQ(_offsetsY.size(), (size_t)1, ""); CV_CheckEQ(_offsetsX[0], _offsetsY[0], "");
             attrs.offset = _offsetsX[0];
 
-            CV_Assert(_stepX == _stepY);
             attrs.step = _stepX;
             attrs.scale_all_sizes = !_aspectRatios.empty(); //true;
 
