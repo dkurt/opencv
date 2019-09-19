@@ -263,7 +263,8 @@ struct ReLUFunctor
 #ifdef HAVE_INF_ENGINE
         if (backendId == DNN_BACKEND_INFERENCE_ENGINE)
             return slope >= 0 || !INF_ENGINE_VER_MAJOR_EQ(INF_ENGINE_RELEASE_2019R1);
-        return DNN_BACKEND_NGRAPH && !slope;
+        if (backendId == DNN_BACKEND_NGRAPH)
+            return true;
 #endif
         return backendId == DNN_BACKEND_OPENCV || backendId == DNN_BACKEND_HALIDE;
     }
@@ -368,11 +369,11 @@ struct ReLUFunctor
 #ifdef HAVE_INF_ENGINE
     std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
     {
-        // if (slope) {
-        //     // CV_Error(Error::StsNotImplemented, "");
-        //     auto slope_ = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape({}), &slope);
-        //     return std::shared_ptr<ngraph::op::PRelu>(node, slope_);
-        // }
+        if (slope) {
+            auto slope_ = std::make_shared<ngraph::op::Constant>(
+                                ngraph::element::f32, ngraph::Shape({1}), &slope);
+            return std::make_shared<ngraph::op::PRelu>(node, slope_);
+        }
         return std::make_shared<ngraph::op::Relu>(node);
     }
 #endif  // HAVE_INF_ENGINE
