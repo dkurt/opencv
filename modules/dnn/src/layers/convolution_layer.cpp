@@ -552,16 +552,14 @@ public:
         {
             if (weightsMat.isContinuous())
             {
-                Mat cvWeights = weightsMat.reshape(1, blobs[0].dims, blobs[0].size);
-                std::vector<size_t> kernel_shape(&cvWeights.size[0], &cvWeights.size[0] + cvWeights.dims);
-                ieWeights = std::make_shared<ngraph::op::Constant>(type, kernel_shape, cvWeights.data);
+                ieWeights = std::make_shared<ngraph::op::Constant>(type, kernel_shape, weightsMat.data);
             }
             else
             {
                 Mat newWeights = blobs[0].reshape(1, outCn);
                 Mat cvWeights = weightsMat.colRange(0, newWeights.cols);
                 cvWeights.copyTo(newWeights);
-                ieWeights = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape({1, (size_t)outCn}), cvWeights.data);
+                ieWeights = std::make_shared<ngraph::op::Constant>(type, kernel_shape, blobs[0].data);
             }
         }
 
