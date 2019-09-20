@@ -1577,6 +1577,9 @@ struct Net::Impl
         for (it = layers.begin(); it != layers.end(); ++it)
         {
             LayerData &ld = it->second;
+            std::cout << "ld: " << ld.id << " - " << ld.type << ":   " << ld.name << '\n';
+            std::cout << "ld.skip " << ld.skip << '\n';
+
             if (ld.id == 0 && ld.skip)
                 continue;
             bool fused = ld.skip;
@@ -1852,8 +1855,6 @@ void initNgraphBackend()
     for (it = layers.begin(); it != layers.end(); ++it)
     {
         LayerData &ld = it->second;
-        std::cout << "ld: " << ld.id << " - " << ld.type << ":   " << ld.name << '\n';
-
         if (ld.id == 0 && ld.skip)
             continue;
 
@@ -1913,7 +1914,6 @@ void initNgraphBackend()
                                                              dynamicCast<NgraphBackendWrapper>();
                 auto iter = std::find(inputNames.begin(), inputNames.end(), inpWrapper->dataPtr->getName());
                 if (iter == inputNames.end()) {
-                    std::cout << "name " <<inpWrapper->dataPtr->getName() << '\n';
                     inputNames.push_back(inpWrapper->dataPtr->getName());
                     inputs.push_back(inpLd.outputBlobs[cons_inp]);
                 }
@@ -1959,6 +1959,7 @@ void initNgraphBackend()
         Ptr<InfEngineNgraphNode> ieNode = node.dynamicCast<InfEngineNgraphNode>();
         CV_Assert(!ieNode.empty());
         ieNode->net = net;
+
         ieNode->net->setNodePtr(&ieNode->node);
 
         net->addBlobs(ld.inputBlobsWrappers);
@@ -2110,7 +2111,8 @@ void initNgraphBackend()
     void fuseLayers(const std::vector<LayerPin>& blobsToKeep_)
     {
         if( !fusion || (preferableBackend != DNN_BACKEND_OPENCV &&
-                        preferableBackend != DNN_BACKEND_INFERENCE_ENGINE))
+                        preferableBackend != DNN_BACKEND_INFERENCE_ENGINE &&
+                        preferableBackend != DNN_BACKEND_NGRAPH))
             return;
 
         CV_TRACE_FUNCTION();
