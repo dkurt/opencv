@@ -379,7 +379,14 @@ public:
         auto& class_probs  = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
         auto& class_logits = nodes[1].dynamicCast<InfEngineNgraphNode>()->node;
         auto& image_shape  = nodes[2].dynamicCast<InfEngineNgraphNode>()->node;
-        auto proposal = std::make_shared<ngraph::op::Proposal>(class_probs, class_logits, image_shape, attr);
+
+        CV_Assert_N(image_shape->get_shape().size() == 2, image_shape->get_shape().front() == 1);
+        auto shape   = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
+                       ngraph::Shape{1},
+                       std::vector<int64_t>{(int64_t)image_shape->get_shape().back()});
+        auto reshape = std::make_shared<ngraph::op::DynReshape>(image_shape, shape);
+
+        auto proposal = std::make_shared<ngraph::op::Proposal>(class_probs, class_logits, reshape, attr);
         return Ptr<BackendNode>(new InfEngineNgraphNode(proposal));
     }
 #endif  // HAVE_INF_ENGINE
