@@ -1484,6 +1484,7 @@ struct Net::Impl
 
     void initInfEngineBackend()
     {
+        std::cout << "initInfEngineBackend" << '\n';
         CV_TRACE_FUNCTION();
         CV_Assert_N(preferableBackend == DNN_BACKEND_INFERENCE_ENGINE, haveInfEngine());
 #ifdef HAVE_INF_ENGINE
@@ -1577,8 +1578,6 @@ struct Net::Impl
         for (it = layers.begin(); it != layers.end(); ++it)
         {
             LayerData &ld = it->second;
-            std::cout << "ld: " << ld.id << " - " << ld.type << ":   " << ld.name << '\n';
-            std::cout << "ld.skip " << ld.skip << '\n';
 
             if (ld.id == 0 && ld.skip)
                 continue;
@@ -1784,6 +1783,7 @@ struct Net::Impl
 
 void initNgraphBackend()
 {
+    std::cout << "initNgraphBackend" << '\n';
     CV_TRACE_FUNCTION();
     CV_Assert_N(preferableBackend == DNN_BACKEND_NGRAPH, haveInfEngine());
 #ifdef HAVE_INF_ENGINE
@@ -1855,6 +1855,9 @@ void initNgraphBackend()
     for (it = layers.begin(); it != layers.end(); ++it)
     {
         LayerData &ld = it->second;
+        std::cout << "ld: " << ld.id << " - " << ld.type << ":   " << ld.name << '\n';
+        std::cout << "ld.skip " << ld.skip << '\n';
+
         if (ld.id == 0 && ld.skip)
             continue;
 
