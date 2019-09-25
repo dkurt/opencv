@@ -741,7 +741,7 @@ struct AbsValFunctor
     bool supportBackend(int backendId, int)
     {
 #ifdef HAVE_INF_ENGINE
-        if (backendId == DNN_BACKEND_INFERENCE_ENGINE)
+        if (backendId == DNN_BACKEND_INFERENCE_ENGINE || backendId == DNN_BACKEND_NGRAPH)
             return !INF_ENGINE_VER_MAJOR_EQ(INF_ENGINE_RELEASE_2019R1);
 #endif
         return backendId == DNN_BACKEND_OPENCV || backendId == DNN_BACKEND_HALIDE;
@@ -805,8 +805,9 @@ struct AbsValFunctor
 #ifdef HAVE_INF_ENGINE
     std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
     {
-        CV_Error(Error::StsNotImplemented, "");
-        // return std::make_shared<ngraph::op::LeakyRelu>(node, -0.999999);
+        float coeff = -0.999999f;
+        auto slope = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape({1}), &coeff);
+        return std::make_shared<ngraph::op::PRelu>(node, slope);
     }
 #endif  // HAVE_INF_ENGINE
 
