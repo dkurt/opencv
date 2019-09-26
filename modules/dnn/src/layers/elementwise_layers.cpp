@@ -914,7 +914,7 @@ struct PowerFunctor
         if (backendId == DNN_BACKEND_INFERENCE_ENGINE)
             return (targetId != DNN_TARGET_OPENCL && targetId != DNN_TARGET_OPENCL_FP16) || power == 1.0 || power == 0.5;
         else
-            return backendId == DNN_BACKEND_OPENCV || backendId == DNN_BACKEND_HALIDE;
+            return backendId == DNN_BACKEND_OPENCV || backendId == DNN_BACKEND_HALIDE || backendId == DNN_BACKEND_NGRAPH;
     }
 
     void apply(const float* srcptr, float* dstptr, int len, size_t planeSize, int cn0, int cn1) const
@@ -1004,7 +1004,27 @@ struct PowerFunctor
 #ifdef HAVE_INF_ENGINE
     std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
     {
-        CV_Error(Error::StsNotImplemented, "");
+        auto scale_node = std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
+                                     ngraph::Shape{1}, &scale);
+
+        auto shift_node = std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
+                                      ngraph::Shape{1}, &shift);
+
+        auto power_node = std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
+                                     ngraph::Shape{1}, &power);
+
+        std::vector<int64_t> axis(node->get_shape().size());
+        std::iota(axis.begin(), axis.end(), 1);
+        auto axes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
+                         ngraph::Shape({axis.size()}), axis.data());
+        auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
+                         ngraph::Shape({node->get_shape().size()}), node->get_shape().data());
+
+        auto new_scale = std::make_shared<ngraph::op::DynBroadcast>(scale_node, shapes, axes);
+        auto new_shift = std::make_shared<ngraph::op::DynBroadcast>(shift_node, shapes, axes);
+        auto new_power = std::make_shared<ngraph::op::DynBroadcast>(power_node, shapes, axes);
+        auto scale_shift = new_scale * node + new_shift;
+        return std::make_shared<ngraph::op::Power>(scale_shift, new_power);
     }
 #endif  // HAVE_INF_ENGINE
 
