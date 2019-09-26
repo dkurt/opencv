@@ -2065,8 +2065,8 @@ public:
             Mat newWeights = blobs[0].reshape(1, inpCn);
             transpose(weightsMat, newWeights);
         }
-
-        std::vector<size_t> out_shape = {1, (size_t)numOutput};
+        size_t batch = ieInpNode->get_shape()[0];
+        std::vector<size_t> out_shape = {batch, (size_t)numOutput};
         std::vector<size_t> paddings_end;
         std::vector<size_t> inpShape = ieInpNode->get_shape();
         if (padMode.empty())
