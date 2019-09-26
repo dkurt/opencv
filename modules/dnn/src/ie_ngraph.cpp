@@ -133,12 +133,13 @@ void InfEngineNgraphNet::createNet(int targetId) {
             auto out = std::make_shared<ngraph::op::Result>(node);
             outs.push_back(out);
         }
+        CV_Assert_N(!inputs_vec.empty(), !outs.empty());
         ngraph_function = std::make_shared<ngraph::Function>(outs, inputs_vec);
 
         int num_comp = getNumComponents();
         if (num_comp > 1) {
             for (int i = num_comp - 1; i >= 0; --i) {
-                ngraph::ResultVector outs;
+                ngraph::ResultVector outputs;
                 ngraph::ParameterVector inps;
                 for (auto& node : components.back()) {
                     if (node->is_parameter()) {
@@ -147,11 +148,12 @@ void InfEngineNgraphNet::createNet(int targetId) {
                     }
                     else if (node->is_output()) {
                         auto result = std::dynamic_pointer_cast<ngraph::op::Result>(node);
-                        outs.push_back(result);
+                        outputs.push_back(result);
                     }
                 }
                 isInit = false;
-                ngraph_function = std::make_shared<ngraph::Function>(outs, inps);
+                CV_Assert_N(!inps.empty(), !outputs.empty());
+                ngraph_function = std::make_shared<ngraph::Function>(outputs, inps);
                 release();
                 components.pop_back();
                 init(targetId);

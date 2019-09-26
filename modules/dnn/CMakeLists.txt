@@ -75,8 +75,7 @@ endif()
 set(include_dirs ${fw_inc})
 set(sources_options "")
 # set(libs libprotobuf ${LAPACK_LIBRARIES})
-file(GLOB ngraph_libs "/home/liubov/work_spase/ngraph/build/install/lib/*.so")
-# set(libs libprotobuf ${LAPACK_LIBRARIES} "/home/liubov/work_spase/ngraph/build/install/lib")
+file(GLOB ngraph_libs "/home/liubov/dldt/bin/intel64/Release/lib/libngraph.so")
 set(libs libprotobuf ${LAPACK_LIBRARIES} ${ngraph_libs})
 
 if(OPENCV_DNN_OPENCL AND HAVE_OPENCL)
@@ -85,10 +84,9 @@ else()
   set(sources_options EXCLUDE_OPENCL)
 endif()
 
-list(APPEND include_dirs "/home/liubov/work_spase/ngraph/build/install/include")
 
-set(IE_MAIN_SOURCE_DIR "/home/liubov/dldt/inference-engine")
-# list(APPEND include_dirs  "${IE_MAIN_SOURCE_DIR}/src/inference_engine")
+list(APPEND include_dirs "/home/liubov/dldt/ngraph/src/ngraph")
+list(APPEND include_dirs "/home/liubov/dldt/ngraph/src/")
 
 ocv_module_include_directories(${include_dirs})
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
