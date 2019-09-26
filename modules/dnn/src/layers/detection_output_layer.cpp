@@ -982,7 +982,7 @@ public:
         ngraph::op::DetectionOutputAttrs attrs;
         attrs.num_classes                = _numClasses;
         attrs.background_label_id        = _backgroundLabelId;
-        attrs.top_k                      = _topK;
+        attrs.top_k                      = _topK > 0 ? _topK : _keepTopK;
         attrs.variance_encoded_in_target = _varianceEncodedInTarget;
         attrs.keep_top_k                 = {_keepTopK};
         attrs.nms_threshold              = _nmsThreshold;
