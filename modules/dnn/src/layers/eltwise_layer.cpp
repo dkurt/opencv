@@ -527,21 +527,32 @@ public:
                                         const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
         auto& curr_node = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
+        std::vector<int64_t> axis(curr_node->get_shape().size());
+        std::iota(axis.begin(), axis.end(), 1);
+        auto axes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
+                    ngraph::Shape({axis.size()}), axis.data());
+        auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
+                      ngraph::Shape({curr_node->get_shape().size()}), curr_node->get_shape().data());
+
+
         if (!coeffs.empty()) {
-            auto coeff = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape(), &coeffs[0]);
-            curr_node = std::make_shared<ngraph::op::Dot>(coeff, curr_node);
+            auto coeff = std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
+                                          ngraph::Shape(), &coeffs[0]);
+            auto coef_br = std::make_shared<ngraph::op::DynBroadcast>(coeff, shapes, axes);
+            curr_node = curr_node * coef_br;
         }
 
         for (size_t i = 1; i < nodes.size(); i++) {
             auto& next_node = nodes[i].dynamicCast<InfEngineNgraphNode>()->node;
             if (!coeffs.empty()) {
                 auto coeff = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape(), &coeffs[i]);
-                next_node = std::make_shared<ngraph::op::Dot>(coeff, next_node);
+                auto coef_br = std::make_shared<ngraph::op::DynBroadcast>(coeff, shapes, axes);
+                next_node = next_node * coef_br;
             }
             if (op == SUM) {
-                curr_node = std::make_shared<ngraph::op::Add>(curr_node, next_node);
+                curr_node = curr_node + next_node;
             } else if (op == PROD) {
-                curr_node = std::make_shared<ngraph::op::Multiply>(curr_node, next_node);
+                curr_node = curr_node * next_node;
             } else if (op == MAX) {
                 curr_node = std::make_shared<ngraph::op::Maximum>(curr_node, next_node);
             } else
