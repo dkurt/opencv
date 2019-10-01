@@ -470,29 +470,15 @@ public:
         auto new_shape = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{2}, data.data());
         auto inp = std::make_shared<ngraph::op::DynReshape>(ieInpNode, new_shape);
 
-        auto type = blobs[0].type() == CV_32F ? ngraph::element::f32 : ngraph::element::f16;
-
         Mat res = blobs[0].t();
         std::vector<size_t> weight_shape = {(size_t)blobs[0].size[1], (size_t)blobs[0].size[0]};
-        auto ieWeights = std::make_shared<ngraph::op::Constant>(type, weight_shape, res.data);
-
-        // std::vector<size_t> weight_shape = {(size_t)blobs[0].size[0], (size_t)blobs[0].size[1]};
-        // auto ieWeights = std::make_shared<ngraph::op::Constant>(type, weight_shape, blobs[0].data);
-        // std::vector<int64_t> axes = {1, 0};
-        // auto tr_axes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({2}), axes.data());
-        // auto w_t = std::make_shared<ngraph::op::Transpose>(ieWeights, tr_axes);
-        // auto dot = std::make_shared<ngraph::op::Dot>(inp, w_t);
+        auto ieWeights = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, weight_shape, res.data);
 
         auto dot = std::make_shared<ngraph::op::Dot>(inp, ieWeights);
         if (bias) {
             std::vector<size_t> bias_shape = {(size_t)blobs[1].size[1]};
-            auto bias_node = std::make_shared<ngraph::op::Constant>(type, bias_shape, blobs[1].data);
-
-            std::vector<int64_t> shape_data = {(int64_t)batch, (int64_t)bias_shape[0]};
-            auto axes   = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({1}), std::vector<int64_t>{0});
-            auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({shape_data.size()}), shape_data.data());
-            auto shift = std::make_shared<ngraph::op::DynBroadcast>(bias_node, shapes, axes);
-            auto fc = dot + shift;
+            auto bias_node = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, bias_shape, blobs[1].data);
+            auto fc = std::make_shared<ngraph::op::Add>(dot, bias_node, ngraph::op::AutoBroadcastType::NUMPY);
             return Ptr<BackendNode>(new InfEngineNgraphNode(fc));
         }
         return Ptr<BackendNode>(new InfEngineNgraphNode(dot));

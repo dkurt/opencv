@@ -527,36 +527,24 @@ public:
                                         const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
         auto& curr_node = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
-        std::vector<int64_t> axis(curr_node->get_shape().size());
-        std::iota(axis.begin(), axis.end(), 1);
-        auto axes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                    ngraph::Shape({axis.size()}), axis.data());
-        auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                      ngraph::Shape({curr_node->get_shape().size()}), curr_node->get_shape().data());
-
-
         if (!coeffs.empty()) {
-            auto coeff = std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
-                                          ngraph::Shape(), &coeffs[0]);
-            auto coef_br = std::make_shared<ngraph::op::DynBroadcast>(coeff, shapes, axes);
-            curr_node = curr_node * coef_br;
+            auto coeff = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{1}, &coeffs[0]);
+            curr_node = std::make_shared<ngraph::op::Multiply>(curr_node, coeff, ngraph::op::AutoBroadcastType::NUMPY);
         }
 
-        for (size_t i = 1; i < nodes.size(); i++) {
+        for (size_t i = 1; i < nodes.size(); i++)
+        {
             auto& next_node = nodes[i].dynamicCast<InfEngineNgraphNode>()->node;
             if (!coeffs.empty()) {
-                auto coeff = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape(), &coeffs[i]);
-                auto coef_br = std::make_shared<ngraph::op::DynBroadcast>(coeff, shapes, axes);
-                next_node = next_node * coef_br;
+                auto coeff = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{1}, &coeffs[i]);
+                next_node = std::make_shared<ngraph::op::Multiply>(next_node, coeff, ngraph::op::AutoBroadcastType::NUMPY);
             }
-            if (op == SUM) {
-                curr_node = curr_node + next_node;
-            } else if (op == PROD) {
-                curr_node = curr_node * next_node;
-            } else if (op == MAX) {
-                curr_node = std::make_shared<ngraph::op::Maximum>(curr_node, next_node);
-            } else
-                CV_Error(Error::StsNotImplemented, "Unsupported eltwise operation");
+            switch (op) {
+                case SUM:  curr_node = curr_node + next_node; break;
+                case PROD: curr_node = curr_node * next_node; break;
+                case MAX:  curr_node = std::make_shared<ngraph::op::Maximum>(curr_node, next_node); break;
+                default: CV_Error(Error::StsNotImplemented, "Unsupported eltwise operation");
+            }
         }
         return Ptr<BackendNode>(new InfEngineNgraphNode(curr_node));
     }
