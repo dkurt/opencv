@@ -171,7 +171,6 @@ void InfEngineNgraphNet::init(int targetId)
     if (!hasNetOwner)
     {
         cnn = InferenceEngine::CNNNetwork(InferenceEngine::convertFunctionToICNNNetwork(ngraph_function));
-        // cnn.serialize("/tmp/cnn.xml", "/tmp/cnn.bin");
     }
 
     switch (targetId)
@@ -219,6 +218,7 @@ void InfEngineNgraphNet::init(int targetId)
         CV_Assert(blobIt != allBlobs.end());
         it.second->setPrecision(blobIt->second->getTensorDesc().getPrecision());
     }
+
     for (const auto& it : cnn.getOutputsInfo())
     {
         const std::string& name = it.first;
@@ -226,6 +226,7 @@ void InfEngineNgraphNet::init(int targetId)
         CV_Assert(blobIt != allBlobs.end());
         it.second->setPrecision(blobIt->second->getTensorDesc().getPrecision());  // Should be always FP32
     }
+    // cnn.serialize("/tmp/cnn.xml", "/tmp/cnn.bin");
 
     initPlugin(cnn);
 }
@@ -277,8 +278,6 @@ static bool detectMyriadX_()
     auto input = std::make_shared<ngraph::op::Parameter>(ngraph::element::f16, ngraph::Shape({1}));
     auto relu = std::make_shared<ngraph::op::Relu>(input);
     auto ngraph_function = std::make_shared<ngraph::Function>(relu, ngraph::ParameterVector{input});
-
-    auto nodes = ngraph_function->get_ops(false);
 
     InferenceEngine::CNNNetwork cnn = InferenceEngine::CNNNetwork(
                                       InferenceEngine::convertFunctionToICNNNetwork(ngraph_function));
@@ -426,21 +425,6 @@ void NgraphBackendLayer::forward(InputArrayOfArrays inputs, OutputArrayOfArrays 
     CV_Error(Error::StsInternal, "Choose Inference Engine as a preferable backend.");
 }
 
-
-void addConstantData(const ngraph::element::Type &type, ngraph::Shape shape, const void *data) {
-    auto node = std::make_shared<ngraph::op::Constant>(type, shape, data);
-}
-
-Mat convertFp16(const std::shared_ptr<ngraph::Node>& node)
-{
-    CV_Assert(node->is_constant());
-
-    std::vector<float> dataFp32 = std::dynamic_pointer_cast<ngraph::op::Constant>(node)->get_vector<float>();
-    Mat src(dataFp32);
-    Mat dst(1, dataFp32.size(), CV_16SC1);
-    convertFp16(src, dst);
-    return dst;
-}
 
 static InferenceEngine::Layout estimateLayout(const Mat& m)
 {
