@@ -142,6 +142,7 @@ private:
 #endif // HAVE_HALIDE
 
 #ifdef HAVE_INF_ENGINE
+std::cout << "--------------------DNN_TARGET_CPU----------------------------" << '\n';
         if (checkIETarget(DNN_TARGET_CPU)) {
             backends.push_back(std::make_pair(DNN_BACKEND_INFERENCE_ENGINE, DNN_TARGET_CPU));
             backends.push_back(std::make_pair(DNN_BACKEND_NGRAPH, DNN_TARGET_CPU));
@@ -153,25 +154,26 @@ private:
         if (checkIETarget(DNN_TARGET_FPGA))
             backends.push_back(std::make_pair(DNN_BACKEND_INFERENCE_ENGINE, DNN_TARGET_FPGA));
 #  ifdef HAVE_OPENCL
-        if (cv::ocl::useOpenCL() && ocl::Device::getDefault().isIntel())
-        {
-            if (checkIETarget(DNN_TARGET_OPENCL)) {
-                backends.push_back(std::make_pair(DNN_BACKEND_INFERENCE_ENGINE, DNN_TARGET_OPENCL));
-                backends.push_back(std::make_pair(DNN_BACKEND_NGRAPH, DNN_TARGET_OPENCL));
-            }
-            if (checkIETarget(DNN_TARGET_OPENCL_FP16)) {
-                backends.push_back(std::make_pair(DNN_BACKEND_INFERENCE_ENGINE, DNN_TARGET_OPENCL_FP16));
-                backends.push_back(std::make_pair(DNN_BACKEND_NGRAPH, DNN_TARGET_OPENCL_FP16));
-            }
-        }
+std::cout << "--------------------DNN_TARGET_OPENCL----------------------------" << '\n';
+        // if (cv::ocl::useOpenCL() && ocl::Device::getDefault().isIntel())
+        // {
+        //     if (checkIETarget(DNN_TARGET_OPENCL)) {
+        //         // backends.push_back(std::make_pair(DNN_BACKEND_INFERENCE_ENGINE, DNN_TARGET_OPENCL));
+        //         // backends.push_back(std::make_pair(DNN_BACKEND_NGRAPH, DNN_TARGET_OPENCL));
+        //     }
+        //     if (checkIETarget(DNN_TARGET_OPENCL_FP16)) {
+        //         // backends.push_back(std::make_pair(DNN_BACKEND_INFERENCE_ENGINE, DNN_TARGET_OPENCL_FP16));
+        //         // backends.push_back(std::make_pair(DNN_BACKEND_NGRAPH, DNN_TARGET_OPENCL_FP16));
+        //     }
+        // }
 #  endif
 #endif // HAVE_INF_ENGINE
 
 #ifdef HAVE_OPENCL
         if (cv::ocl::useOpenCL())
         {
-            backends.push_back(std::make_pair(DNN_BACKEND_OPENCV, DNN_TARGET_OPENCL));
-            backends.push_back(std::make_pair(DNN_BACKEND_OPENCV, DNN_TARGET_OPENCL_FP16));
+            // backends.push_back(std::make_pair(DNN_BACKEND_OPENCV, DNN_TARGET_OPENCL));
+            // backends.push_back(std::make_pair(DNN_BACKEND_OPENCV, DNN_TARGET_OPENCL_FP16));
         }
 #endif
 
@@ -1484,7 +1486,6 @@ struct Net::Impl
 
     void initInfEngineBackend()
     {
-        std::cout << "initInfEngineBackend" << '\n';
         CV_TRACE_FUNCTION();
         CV_Assert_N(preferableBackend == DNN_BACKEND_INFERENCE_ENGINE, haveInfEngine());
 #ifdef HAVE_INF_ENGINE
@@ -1783,7 +1784,7 @@ struct Net::Impl
 
 void initNgraphBackend()
 {
-    std::cout << "initNgraphBackend" << '\n';
+    // std::cout << "initNgraphBackend" << '\n';
     CV_TRACE_FUNCTION();
     CV_Assert_N(preferableBackend == DNN_BACKEND_NGRAPH, haveInfEngine());
 #ifdef HAVE_INF_ENGINE
@@ -2878,6 +2879,8 @@ Net Net::readFromModelOptimizer(const String& xml, const String& bin)
     reader.ReadWeights(bin);
 
     InferenceEngine::CNNNetwork ieNet = reader.getNetwork();
+
+
 
     std::vector<String> inputsNames;
     for (auto& it : ieNet.getInputsInfo())

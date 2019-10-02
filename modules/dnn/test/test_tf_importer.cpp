@@ -91,7 +91,8 @@ public:
         cv::Mat input = blobFromNPY(inpPath);
         cv::Mat ref = blobFromNPY(outPath);
         checkBackend(&input, &ref);
-
+        std::cout << "input " << input.size << '\n';
+        std::cout << "ref " << ref.size << '\n';
         Net net;
         if (memoryLoad)
         {
@@ -112,7 +113,6 @@ public:
             net = readNetFromTensorflow(netPath, netConfig);
 
         ASSERT_FALSE(net.empty());
-
         net.setPreferableBackend(backend);
         net.setPreferableTarget(target);
         net.setInput(input);
@@ -211,7 +211,7 @@ TEST_P(Test_TensorFlow_layers, batch_norm3D)
 
 TEST_P(Test_TensorFlow_layers, slim_batch_norm)
 {
-    if (backend == DNN_BACKEND_INFERENCE_ENGINE)
+    if (backend == DNN_BACKEND_INFERENCE_ENGINE || backend == DNN_BACKEND_NGRAPH)
         applyTestTag(CV_TEST_TAG_DNN_SKIP_IE);
     // Output values range: [-40.0597, 207.827]
     double l1 = (target == DNN_TARGET_OPENCL_FP16 || target == DNN_TARGET_MYRIAD) ? 0.041 : default_l1;
@@ -229,7 +229,7 @@ TEST_P(Test_TensorFlow_layers, pooling)
 
 TEST_P(Test_TensorFlow_layers, max_pool_grad)
 {
-    if (backend == DNN_BACKEND_INFERENCE_ENGINE)
+    if (backend == DNN_BACKEND_INFERENCE_ENGINE || backend == DNN_BACKEND_NGRAPH)
         applyTestTag(CV_TEST_TAG_DNN_SKIP_IE);
     runTensorFlowNet("max_pool_grad");
 }
@@ -293,7 +293,7 @@ TEST_P(Test_TensorFlow_layers, matmul)
 
 TEST_P(Test_TensorFlow_layers, reshape)
 {
-    if (backend == DNN_BACKEND_INFERENCE_ENGINE)
+    if (backend == DNN_BACKEND_INFERENCE_ENGINE || backend == DNN_BACKEND_NGRAPH)
         applyTestTag(CV_TEST_TAG_DNN_SKIP_IE);
     runTensorFlowNet("shift_reshape_no_reorder");
     runTensorFlowNet("reshape_no_reorder");
@@ -607,6 +607,7 @@ TEST_P(Test_TensorFlow_nets, EAST_text_detection)
     Mat inp = blobFromImage(img, 1.0, Size(), Scalar(123.68, 116.78, 103.94), true, false);
     net.setInput(inp);
 
+
     std::vector<Mat> outs;
     std::vector<String> outNames(2);
     outNames[0] = "feature_fusion/Conv_7/Sigmoid";
@@ -679,7 +680,7 @@ TEST_P(Test_TensorFlow_layers, quantized)
 
 TEST_P(Test_TensorFlow_layers, lstm)
 {
-    if (backend == DNN_BACKEND_INFERENCE_ENGINE)
+    if (backend == DNN_BACKEND_INFERENCE_ENGINE || backend == DNN_BACKEND_NGRAPH)
         applyTestTag(CV_TEST_TAG_DNN_SKIP_IE);
     if (backend == DNN_BACKEND_OPENCV && target == DNN_TARGET_OPENCL_FP16)
         applyTestTag(CV_TEST_TAG_DNN_SKIP_OPENCL_FP16);
@@ -693,7 +694,7 @@ TEST_P(Test_TensorFlow_layers, split)
         getInferenceEngineVPUType() == CV_DNN_INFERENCE_ENGINE_VPU_TYPE_MYRIAD_2)
         applyTestTag(CV_TEST_TAG_DNN_SKIP_IE_MYRIAD_2);
     runTensorFlowNet("split");
-    if (backend == DNN_BACKEND_INFERENCE_ENGINE)
+    if (backend == DNN_BACKEND_INFERENCE_ENGINE || backend == DNN_BACKEND_NGRAPH)
         applyTestTag(CV_TEST_TAG_DNN_SKIP_IE);
     runTensorFlowNet("split_equals");
 }
@@ -738,7 +739,7 @@ TEST_P(Test_TensorFlow_layers, relu6)
 
 TEST_P(Test_TensorFlow_layers, subpixel)
 {
-    if (backend == DNN_BACKEND_INFERENCE_ENGINE)
+    if (backend == DNN_BACKEND_INFERENCE_ENGINE || backend == DNN_BACKEND_NGRAPH)
         applyTestTag(CV_TEST_TAG_DNN_SKIP_IE);
     runTensorFlowNet("subpixel");
 }

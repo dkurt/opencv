@@ -94,13 +94,14 @@ public:
             outLayerName = net.getLayerNames().back();
 
         net.setInput(inp);
+        std::cout << "inp " << inp.size << '\n';
         std::vector<Mat> outBlobs;
         net.forward(outBlobs, outLayerName);
         l1 = l1 ? l1 : default_l1;
         lInf = lInf ? lInf : default_lInf;
         normAssert(outRef, outBlobs[0], "", l1, lInf);
 
-        if (check2ndBlob && backend != DNN_BACKEND_INFERENCE_ENGINE)
+        if (check2ndBlob && backend == DNN_BACKEND_OPENCV)
         {
             Mat out2 = outBlobs[1];
             Mat ref2 = readTorchBlob(_tf(prefix + "_output_2" + suffix), isBinary);
@@ -374,6 +375,7 @@ TEST_P(Test_Torch_nets, ENet_accuracy)
     {
         net.setInput(inputBlob, "");
         Mat out = net.forward();
+        net.dumpToFile("Enet.dot");
         normAssert(ref, out, "", 0.00044, /*target == DNN_TARGET_CPU ? 0.453 : */0.552);
         normAssertSegmentation(ref, out);
     }

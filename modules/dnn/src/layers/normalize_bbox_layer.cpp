@@ -64,7 +64,7 @@ public:
 
     virtual bool supportBackend(int backendId) CV_OVERRIDE
     {
-        if (backendId == DNN_BACKEND_INFERENCE_ENGINE || backendId == DNN_BACKEND_NGRAPH)
+        if (backendId == DNN_BACKEND_INFERENCE_ENGINE || (backendId == DNN_BACKEND_NGRAPH && preferableTarget == DNN_TARGET_CPU))
         {
             if (pnorm != 2)
                 return false;
@@ -314,6 +314,7 @@ public:
                                         const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
         auto& ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
+        std::cout << "ieInpNode " << ieInpNode->get_shape() << '\n';
         size_t batch = ieInpNode->get_shape()[0];
         std::vector<int64_t> axes_data;
         if (!acrossSpatial) {

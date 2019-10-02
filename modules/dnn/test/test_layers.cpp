@@ -146,7 +146,7 @@ TEST_P(Test_Caffe_layers, DeConvolution)
 
 TEST_P(Test_Caffe_layers, InnerProduct)
 {
-    if (backend == DNN_BACKEND_INFERENCE_ENGINE)
+    if (backend == DNN_BACKEND_INFERENCE_ENGINE || backend == DNN_BACKEND_NGRAPH)
         applyTestTag(CV_TEST_TAG_DNN_SKIP_IE);
     if (backend == DNN_BACKEND_OPENCV && target == DNN_TARGET_OPENCL_FP16)
         applyTestTag(CV_TEST_TAG_DNN_SKIP_OPENCL_FP16);
@@ -238,7 +238,7 @@ TEST_P(Test_Caffe_layers, Concat)
     if (backend == DNN_BACKEND_INFERENCE_ENGINE && target == DNN_TARGET_MYRIAD)
         applyTestTag(CV_TEST_TAG_DNN_SKIP_IE_MYRIAD, CV_TEST_TAG_DNN_SKIP_IE_2019R1, CV_TEST_TAG_DNN_SKIP_IE_2019R1_1);
 #elif INF_ENGINE_VER_MAJOR_EQ(2019020000)
-    if (backend == DNN_BACKEND_INFERENCE_ENGINE && target == DNN_TARGET_OPENCL)
+    if ((backend == DNN_BACKEND_INFERENCE_ENGINE || backend == DNN_BACKEND_NGRAPH) && target == DNN_TARGET_OPENCL)
         applyTestTag(CV_TEST_TAG_DNN_SKIP_IE_OPENCL, CV_TEST_TAG_DNN_SKIP_IE_2019R2);
 #endif
 #endif
@@ -317,7 +317,7 @@ TEST_P(Test_Caffe_layers, layer_prelu_fc)
 
 TEST_P(Test_Caffe_layers, Reshape_Split_Slice)
 {
-    if (backend == DNN_BACKEND_INFERENCE_ENGINE)
+    if (backend == DNN_BACKEND_INFERENCE_ENGINE || backend == DNN_BACKEND_NGRAPH)
         applyTestTag(CV_TEST_TAG_DNN_SKIP_IE);
 
     Net net = readNetFromCaffe(_tf("reshape_and_slice_routines.prototxt"));
@@ -563,7 +563,7 @@ TEST(Layer_Test_ROIPooling, Accuracy)
 
     net.setInput(inp, "input");
     net.setInput(rois, "rois");
-    net.setPreferableBackend(DNN_BACKEND_OPENCV);
+    net.setPreferableBackend(DNN_BACKEND_NGRAPH);
 
     Mat out = net.forward();
 
@@ -574,7 +574,7 @@ TEST_P(Test_Caffe_layers, FasterRCNN_Proposal)
 {
     if (backend == DNN_BACKEND_OPENCV && target == DNN_TARGET_OPENCL_FP16)
         applyTestTag(CV_TEST_TAG_DNN_SKIP_OPENCL_FP16);
-    if (backend == DNN_BACKEND_INFERENCE_ENGINE)
+    if (backend == DNN_BACKEND_INFERENCE_ENGINE || backend == DNN_BACKEND_NGRAPH)
         applyTestTag(CV_TEST_TAG_DNN_SKIP_IE);
 
     Net net = readNetFromCaffe(_tf("net_faster_rcnn_proposal.prototxt"));
@@ -807,6 +807,8 @@ TEST_P(Test_Caffe_layers, PriorBox_repeated)
     randu(shape, -1.0f, 1.0f);
     net.setInput(inp, "data");
     net.setInput(shape, "shape");
+    net.setPreferableBackend(backend);
+    net.setPreferableTarget(target);
     Mat out = net.forward();
     Mat ref = blobFromNPY(_tf("priorbox_output.npy"));
     normAssert(out, ref, "");
@@ -1203,7 +1205,7 @@ TEST(Test_DLDT, fused_output)
         LayerParams lp;
         net.addLayerToPrev("unsupported_layer", "Unsupported", lp);
     }
-    net.setPreferableBackend(DNN_BACKEND_INFERENCE_ENGINE);
+    net.setPreferableBackend(DNN_BACKEND_NGRAPH);
     net.setInput(Mat({1, 1, 1, 1}, CV_32FC1, Scalar(1)));
     ASSERT_NO_THROW(net.forward());
     LayerFactory::unregisterLayer("Unsupported");

@@ -55,7 +55,19 @@ public:
         net.setPreferableTarget(target);
 
         net.setInput(inp);
-        Mat out = net.forward("");
+        Mat out = net.forward();
+// net.dumpToFile("densenet.dot");
+//
+// Net netDefault = readNetFromONNX(onnxmodel);
+// ASSERT_FALSE(netDefault.empty());
+//
+// netDefault.setPreferableBackend(DNN_BACKEND_OPENCV);
+// netDefault.setPreferableTarget(target);
+//
+// netDefault.setInput(inp);
+//  ref = netDefault.forward("");
+std::cout << "inp " << inp.size << '\n';
+std::cout << "ref " << ref.size << '\n';
 
         if (useSoftmax)
         {
@@ -132,7 +144,7 @@ TEST_P(Test_ONNX_layers, Deconvolution3D)
 #if defined(INF_ENGINE_RELEASE)
     applyTestTag(CV_TEST_TAG_DNN_SKIP_IE_2018R5);
 #endif
-    if (backend != DNN_BACKEND_INFERENCE_ENGINE || target != DNN_TARGET_CPU)
+    if (backend == DNN_BACKEND_OPENCV || target != DNN_TARGET_CPU)
         throw SkipTestException("Only DLIE backend on CPU is supported");
     testONNXModels("deconv3d");
     testONNXModels("deconv3d_bias");
@@ -195,7 +207,7 @@ TEST_P(Test_ONNX_layers, Eltwise3D)
 #if defined(INF_ENGINE_RELEASE) && INF_ENGINE_VER_MAJOR_LT(2019010000)
     throw SkipTestException("Test is enabled starts from 2019R1");
 #endif
-    if (backend == DNN_BACKEND_INFERENCE_ENGINE && target != DNN_TARGET_CPU)
+    if ((backend == DNN_BACKEND_NGRAPH || backend == DNN_BACKEND_INFERENCE_ENGINE) && target != DNN_TARGET_CPU)
         throw SkipTestException("Only CPU on DLIE backend is supported");
     testONNXModels("eltwise3d");
 }
