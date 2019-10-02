@@ -179,11 +179,15 @@ void InfEngineNgraphNet::init(int targetId)
             device_name = "CPU";
             break;
         case DNN_TARGET_OPENCL:
+            device_name = "GPU";
+            break;
         case DNN_TARGET_OPENCL_FP16:
             device_name = "GPU";
+            // cnn.setPrecision(InferenceEngine::Precision::FP16);
             break;
         case DNN_TARGET_MYRIAD:
             device_name = "MYRIAD";
+            // cnn.setPrecision(InferenceEngine::Precision::FP16);
             break;
         case DNN_TARGET_FPGA:
             device_name = "FPGA";

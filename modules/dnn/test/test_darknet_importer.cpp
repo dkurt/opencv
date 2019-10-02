@@ -353,11 +353,13 @@ TEST_P(Test_Darknet_nets_async, Accuracy)
     Net netSync = readNet(findDataFile("dnn/" + prefix + ".cfg"),
                           findDataFile("dnn/" + prefix + ".weights", false));
     netSync.setPreferableTarget(target);
+    netSync.setPreferableBackend(DNN_BACKEND_INFERENCE_ENGINE);
 
     // Run synchronously.
     std::vector<Mat> refs(numInputs);
     for (int i = 0; i < numInputs; ++i)
     {
+        std::cout << "out #" << i << '\n';
         netSync.setInput(inputs[i]);
         refs[i] = netSync.forward().clone();
     }
@@ -365,18 +367,22 @@ TEST_P(Test_Darknet_nets_async, Accuracy)
     Net netAsync = readNet(findDataFile("dnn/" + prefix + ".cfg"),
                            findDataFile("dnn/" + prefix + ".weights", false));
     netAsync.setPreferableTarget(target);
+    netAsync.setPreferableBackend(DNN_BACKEND_INFERENCE_ENGINE);
 
     // Run asynchronously. To make test more robust, process inputs in the reversed order.
     for (int i = numInputs - 1; i >= 0; --i)
     {
+        std::cout << "i = " << i << '\n';
         netAsync.setInput(inputs[i]);
 
         AsyncArray out = netAsync.forwardAsync();
+        std::cout << "netAsync get out " << '\n';
         ASSERT_TRUE(out.valid());
         Mat result;
         EXPECT_TRUE(out.get(result, async_timeout));
         normAssert(refs[i], result, format("Index: %d", i).c_str(), 0, 0);
     }
+    std::cout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!111" << '\n';
 }
 
 INSTANTIATE_TEST_CASE_P(/**/, Test_Darknet_nets_async, Combine(

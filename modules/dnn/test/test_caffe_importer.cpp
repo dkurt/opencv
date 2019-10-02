@@ -72,6 +72,8 @@ public:
         // Output has shape 1x1xNx7 where N - number of detections.
         // An every detection is a vector of values [id, classId, confidence, left, top, right, bottom]
         Mat out = net.forward();
+
+        net.dumpToFile("FasterRCNN_vgg16.dot");
         scoreDiff = scoreDiff ? scoreDiff : default_l1;
         iouDiff = iouDiff ? iouDiff : default_lInf;
         normAssertDetections(ref, out, ("model name: " + model).c_str(), 0.8, scoreDiff, iouDiff);
@@ -112,7 +114,7 @@ TEST(Test_Caffe, read_googlenet)
 
 TEST_P(Test_Caffe_nets, Axpy)
 {
-    if (backend == DNN_BACKEND_INFERENCE_ENGINE)
+    if (backend == DNN_BACKEND_INFERENCE_ENGINE || backend == DNN_BACKEND_NGRAPH)
         applyTestTag(CV_TEST_TAG_DNN_SKIP_IE);
 
     String proto = _tf("axpy.prototxt");
@@ -628,10 +630,10 @@ TEST_P(Test_Caffe_nets, FasterRCNN_vgg16)
     );
 
 #if defined(INF_ENGINE_RELEASE)
-    if (backend == DNN_BACKEND_INFERENCE_ENGINE && (target == DNN_TARGET_OPENCL || target == DNN_TARGET_OPENCL_FP16))
+    if ((backend == DNN_BACKEND_INFERENCE_ENGINE || backend == DNN_BACKEND_NGRAPH) && (target == DNN_TARGET_OPENCL || target == DNN_TARGET_OPENCL_FP16))
         applyTestTag(target == DNN_TARGET_OPENCL ? CV_TEST_TAG_DNN_SKIP_IE_OPENCL : CV_TEST_TAG_DNN_SKIP_IE_OPENCL_FP16);
 
-    if (backend == DNN_BACKEND_INFERENCE_ENGINE && target == DNN_TARGET_MYRIAD)
+    if ((backend == DNN_BACKEND_INFERENCE_ENGINE || backend == DNN_BACKEND_NGRAPH) && target == DNN_TARGET_MYRIAD)
         applyTestTag(CV_TEST_TAG_DNN_SKIP_IE_MYRIAD);
 #endif
 
