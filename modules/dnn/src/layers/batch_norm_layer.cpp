@@ -13,6 +13,8 @@ Implementation of Batch Normalization layer.
 #include "layers_common.hpp"
 #include "../op_halide.hpp"
 #include "../op_inf_engine.hpp"
+#include "../ie_ngraph.hpp"
+
 #include <opencv2/dnn/shape_utils.hpp>
 
 #ifdef HAVE_OPENCL
@@ -156,7 +158,7 @@ public:
     {
         return (backendId == DNN_BACKEND_OPENCV) ||
                (backendId == DNN_BACKEND_HALIDE && haveHalide()) ||
-               (backendId == DNN_BACKEND_INFERENCE_ENGINE && haveInfEngine() && (preferableTarget == DNN_TARGET_CPU || dims == 4));
+               ((backendId == DNN_BACKEND_INFERENCE_ENGINE || backendId == DNN_BACKEND_NGRAPH) && haveInfEngine() && (preferableTarget == DNN_TARGET_CPU || dims == 4));
     }
 
 #ifdef HAVE_OPENCL
@@ -360,6 +362,30 @@ public:
         addConstantData("weights", wrapToInfEngineBlob(weights_, {numChannels}, InferenceEngine::Layout::C), ieLayer);
         addConstantData("biases", wrapToInfEngineBlob(bias_, {numChannels}, InferenceEngine::Layout::C), ieLayer);
         return Ptr<BackendNode>(new InfEngineBackendNode(ieLayer));
+    }
+#endif  // HAVE_INF_ENGINE
+
+#ifdef HAVE_INF_ENGINE
+    virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
+    {
+        const size_t numChannels = weights_.total();
+        auto ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
+
+        auto weight = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape({numChannels}), weights_.data);
+        auto bias = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape({numChannels}), bias_.data);
+
+        std::vector<int64_t> axis(ieInpNode->get_shape().size() - 1, 0);
+        std::iota(axis.begin() + 1, axis.end(), 2);
+        auto shape_data = ieInpNode->get_shape();
+        auto axes   = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({axis.size()}), axis.data());
+        auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({shape_data.size()}), shape_data.data());
+
+        auto scale = std::make_shared<ngraph::op::DynBroadcast>(weight, shapes, axes);
+        auto shift = std::make_shared<ngraph::op::DynBroadcast>(bias, shapes, axes);
+
+        auto scale_node = std::make_shared<ngraph::op::Multiply>(ieInpNode, scale);
+        auto scale_shift = std::make_shared<ngraph::op::Add>(scale_node, shift);
+        return Ptr<BackendNode>(new InfEngineNgraphNode(scale_shift));
     }
 #endif  // HAVE_INF_ENGINE
 
