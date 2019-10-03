@@ -46,6 +46,7 @@
 #include "../op_inf_engine.hpp"
 
 #include "../ie_ngraph.hpp"
+#include "ngraph_ops/group_conv_bias.hpp"
 
 #include "opencv2/core/hal/hal.hpp"
 #include "opencv2/core/hal/intrin.hpp"
@@ -566,7 +567,7 @@ public:
         ngraph::op::PadType pad_type = ngraph::op::PadType::EXPLICIT;
         if (!padMode.empty())
             pad_type = padMode == "VALID" ? ngraph::op::PadType::VALID : ngraph::op::PadType::SAME_UPPER;
-std::cout << "group " << group << '\n';
+
         if (group != 1) {
             auto conv_node = std::make_shared<ngraph::op::GroupConvolution>(
                              ieInpNode, ieWeights,
@@ -580,17 +581,9 @@ std::cout << "group " << group << '\n';
 
             if (hasBias() || fusedBias)
             {
-                auto bias = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape({(size_t)outCn}), biasvec.data());
-                std::vector<int64_t> axis(dims.size() - 1, 0);
-                std::iota(axis.begin() + 1, axis.end(), 2);
-
-                auto axes     = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                                ngraph::Shape({axis.size()}), axis.data());
-                auto shapes   = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                                ngraph::Shape({conv_node->get_shape().size()}), conv_node->get_shape().data());
-                auto new_bias = std::make_shared<ngraph::op::DynBroadcast>(bias, shapes, axes);
-
-                auto conv_bias = conv_node + new_bias;
+                auto bias = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape{(size_t)outCn}, biasvec.data());
+                auto conv_bias = std::make_shared<ngraph::op::GroupConvolutionBias>(conv_node, bias, group,
+                                 conv_node->get_output_shape(0), false, 1.0);
                 return Ptr<BackendNode>(new InfEngineNgraphNode(conv_bias));
             }
             return Ptr<BackendNode>(new InfEngineNgraphNode(conv_node));
@@ -606,17 +599,8 @@ std::cout << "group " << group << '\n';
 
            if (hasBias() || fusedBias)
            {
-               auto bias = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape({(size_t)outCn}), biasvec.data());
-
-               std::vector<int64_t> axis(dims.size() - 1, 0);
-               std::iota(axis.begin() + 1, axis.end(), 2);
-
-               auto axes      = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                                ngraph::Shape({axis.size()}), axis.data());
-               auto shapes    = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                                ngraph::Shape({conv_node->get_shape().size()}), conv_node->get_shape().data());
-               auto new_bias  = std::make_shared<ngraph::op::DynBroadcast>(bias, shapes, axes);
-               auto conv_bias = conv_node + new_bias;
+               auto bias = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape{(size_t)outCn}, biasvec.data());
+               auto conv_bias = std::make_shared<ngraph::op::ConvolutionBias>(conv_node, bias, false);
                return Ptr<BackendNode>(new InfEngineNgraphNode(conv_bias));
            }
            return Ptr<BackendNode>(new InfEngineNgraphNode(conv_node));
