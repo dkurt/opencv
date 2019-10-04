@@ -582,8 +582,7 @@ public:
             if (hasBias() || fusedBias)
             {
                 auto bias = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape{(size_t)outCn}, biasvec.data());
-                auto conv_bias = std::make_shared<ngraph::op::GroupConvolutionBias>(conv_node, bias, group,
-                                 conv_node->get_output_shape(0), false, 1.0);
+                auto conv_bias = std::make_shared<ngraph::op::GroupConvolutionBias>(conv_node, bias, false);
                 return Ptr<BackendNode>(new InfEngineNgraphNode(conv_bias));
             }
             return Ptr<BackendNode>(new InfEngineNgraphNode(conv_node));
