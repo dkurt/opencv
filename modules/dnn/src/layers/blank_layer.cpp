@@ -139,13 +139,9 @@ public:
                                         const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
         auto& ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
-        InferenceEngine::DataPtr input = ngraphDataNode(inputs[0]);
-        std::vector<size_t> dims = input->getDims();
-        CV_Assert(!dims.empty());
-
-        CV_Assert(preferableTarget != DNN_TARGET_MYRIAD);
-        auto split = std::make_shared<ngraph::op::Split>(ieInpNode, dims.size() - 1, 1); // num_splits = 1
-        return Ptr<BackendNode>(new InfEngineNgraphNode(split));
+        ngraph::NodeVector inp{ieInpNode};
+        auto blank = std::make_shared<ngraph::op::Concat>(inp, 0);
+        return Ptr<BackendNode>(new InfEngineNgraphNode(blank));
     }
 #endif  // HAVE_INF_ENGINE
 };
