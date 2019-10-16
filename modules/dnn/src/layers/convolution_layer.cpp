@@ -44,10 +44,7 @@
 #include "layers_common.hpp"
 #include "../op_halide.hpp"
 #include "../op_inf_engine.hpp"
-
 #include "../ie_ngraph.hpp"
-#include "ngraph_ops/group_conv_bias.hpp"
-// #include "ngraph/op/fused/group_conv.hpp"
 
 #include "opencv2/core/hal/hal.hpp"
 #include "opencv2/core/hal/intrin.hpp"

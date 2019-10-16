@@ -1005,25 +1005,15 @@ struct PowerFunctor
     std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
     {
         auto scale_node = std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
-                          ngraph::Shape{1}, &scale);
-
+                                                                 ngraph::Shape{1}, &scale);
         auto shift_node = std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
-                          ngraph::Shape{1}, &shift);
-
+                                                                 ngraph::Shape{1}, &shift);
         auto power_node = std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
-                                     ngraph::Shape{1}, &power);
-
-        std::vector<int64_t> axis(node->get_shape().size());
-        std::iota(axis.begin(), axis.end(), 1);
-        auto axes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                    ngraph::Shape({axis.size()}), axis.data());
-        auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                      ngraph::Shape({node->get_shape().size()}), node->get_shape().data());
-        auto new_power = std::make_shared<ngraph::op::DynBroadcast>(power_node, shapes, axes);
+                                                                 ngraph::Shape{1}, &power);
 
         auto mul = std::make_shared<ngraph::op::Multiply>(scale_node, node, ngraph::op::AutoBroadcastType::NUMPY);
         auto scale_shift = std::make_shared<ngraph::op::Add>(mul, shift_node, ngraph::op::AutoBroadcastType::NUMPY);
-        return std::make_shared<ngraph::op::Power>(scale_shift, new_power);
+        return std::make_shared<ngraph::op::Power>(scale_shift, power_node, ngraph::op::AutoBroadcastType::NUMPY);
     }
 #endif  // HAVE_INF_ENGINE
 
