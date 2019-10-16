@@ -329,7 +329,7 @@ public:
     {
         auto& ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
         int axis = clamp(axisRaw, ieInpNode->get_shape().size());
-        auto softmax = std::make_shared<ngraph::op::Softmax>(ieInpNode, ngraph::AxisSet({(size_t)axis}));
+        auto softmax = std::make_shared<ngraph::op::v1::Softmax>(ieInpNode, axis);
         return Ptr<BackendNode>(new InfEngineNgraphNode(softmax));
     }
 #endif  // HAVE_INF_ENGINE
