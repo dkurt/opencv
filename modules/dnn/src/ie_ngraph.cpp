@@ -8,7 +8,7 @@
 #include "precomp.hpp"
 #include "ie_ngraph.hpp"
 
-#include <ie_ir_reader.hpp>
+// #include <ie_ir_reader.hpp>
 
 #include <opencv2/dnn/shape_utils.hpp>
 
@@ -170,7 +170,8 @@ void InfEngineNgraphNet::init(int targetId)
 {
     if (!hasNetOwner)
     {
-        cnn = InferenceEngine::CNNNetwork(InferenceEngine::convertFunctionToICNNNetwork(ngraph_function));
+        cnn = InferenceEngine::CNNNetwork(ngraph_function);
+        cnn.serialize("/tmp/cnn.xml", "/tmp/cnn.bin");
     }
 
     switch (targetId)
@@ -179,15 +180,11 @@ void InfEngineNgraphNet::init(int targetId)
             device_name = "CPU";
             break;
         case DNN_TARGET_OPENCL:
-            device_name = "GPU";
-            break;
         case DNN_TARGET_OPENCL_FP16:
             device_name = "GPU";
-            // cnn.setPrecision(InferenceEngine::Precision::FP16);
             break;
         case DNN_TARGET_MYRIAD:
             device_name = "MYRIAD";
-            // cnn.setPrecision(InferenceEngine::Precision::FP16);
             break;
         case DNN_TARGET_FPGA:
             device_name = "FPGA";
@@ -195,6 +192,9 @@ void InfEngineNgraphNet::init(int targetId)
         default:
             CV_Error(Error::StsNotImplemented, "Unknown target");
     };
+
+    if (cnn.getPrecision() != InferenceEngine::Precision::FP16 && targetId == DNN_TARGET_MYRIAD)
+        resetMyriadDevice();
 
     if (!hasNetOwner) {
         for (size_t i = 0; i < ngraph_function->get_output_size(); ++i) {
@@ -230,7 +230,6 @@ void InfEngineNgraphNet::init(int targetId)
         CV_Assert(blobIt != allBlobs.end());
         it.second->setPrecision(blobIt->second->getTensorDesc().getPrecision());  // Should be always FP32
     }
-    // cnn.serialize("/tmp/cnn.xml", "/tmp/cnn.bin");
 
     initPlugin(cnn);
 }
@@ -283,8 +282,7 @@ static bool detectMyriadX_()
     auto relu = std::make_shared<ngraph::op::Relu>(input);
     auto ngraph_function = std::make_shared<ngraph::Function>(relu, ngraph::ParameterVector{input});
 
-    InferenceEngine::CNNNetwork cnn = InferenceEngine::CNNNetwork(
-                                      InferenceEngine::convertFunctionToICNNNetwork(ngraph_function));
+    InferenceEngine::CNNNetwork cnn = InferenceEngine::CNNNetwork(ngraph_function);
     try
     {
         auto netExec = getCore().LoadNetwork(cnn, "MYRIAD", {{"VPU_PLATFORM", "VPU_2480"}});
