@@ -591,7 +591,7 @@ public:
                 if (preferableTarget == DNN_TARGET_OPENCL && group != outCn) {
                     auto shapes   = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
                                     ngraph::Shape({conv_node->get_shape().size()}), conv_node->get_shape().data());
-                    auto new_bias = std::make_shared<ngraph::op::DynBroadcast>(bias, shapes, axes);
+                    auto new_bias = std::make_shared<ngraph::op::v1::Broadcast>(bias, shapes, axes);
 
                     auto conv_bias = conv_node + new_bias;
                     return Ptr<BackendNode>(new InfEngineNgraphNode(conv_bias));
@@ -599,7 +599,7 @@ public:
 
                 auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
                                                ngraph::Shape({shape.size()}), shape.data());
-                auto new_bias = std::make_shared<ngraph::op::DynBroadcast>(bias, shapes, axes);
+                auto new_bias = std::make_shared<ngraph::op::v1::Broadcast>(bias, shapes, axes);
                 auto conv_bias = std::make_shared<ngraph::op::Add>(conv_node, new_bias,
                                                   ngraph::op::AutoBroadcastType::NUMPY);
 
