@@ -580,13 +580,11 @@ public:
             if (hasBias() || fusedBias)
             {
                 auto bias = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape{(size_t)outCn}, biasvec.data());
-                std::vector<int64_t> axis(dims.size() - 1, 0);
-                std::iota(axis.begin() + 1, axis.end(), 2);
                 std::vector<int64_t> shape(dims.size(), 1);
                 shape[1] = bias->get_shape()[0];
 
                 auto axes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                                             ngraph::Shape({axis.size()}), axis.data());
+                                             ngraph::Shape({1}), std::vector<int64_t>{1});
 
                 if (preferableTarget == DNN_TARGET_OPENCL && group != outCn) {
                     auto shapes   = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
