@@ -339,11 +339,12 @@ public:
         else
         {
             CV_Assert(numChannels == blobs[0].total());
-            auto axes_w = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                                           ngraph::Shape{1}, std::vector<int64_t>{1});
             auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
                                            ngraph::Shape({ieInpNode->get_shape().size()}), ieInpNode->get_shape().data());
+
             if (blobs[0].total() == 1) {
+                auto axes_w = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
+                    ngraph::Shape{1}, std::vector<int64_t>{1});
                 auto weights = std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
                                 ngraph::Shape{numChannels}, blobs[0].data);
                 auto new_weights = std::make_shared<ngraph::op::v1::Broadcast>(weights, shapes, axes_w);
@@ -353,6 +354,9 @@ public:
                 // weights->get_shape().size() > 1 ~> channel_shared = false
                 auto weights = std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
                                 ngraph::Shape{batch, numChannels}, blobs[0].data);
+
+                auto axes_w = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
+                                               ngraph::Shape{2}, std::vector<int64_t>{0, 1});
 
                 auto new_weights = std::make_shared<ngraph::op::v1::Broadcast>(weights, shapes, axes_w);
                 auto mul = norm * new_weights;
