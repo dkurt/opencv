@@ -314,13 +314,9 @@ public:
                                         const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
         auto& ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
-        std::cout << "ieInpNode " << ieInpNode->get_shape() << '\n';
         size_t batch = ieInpNode->get_shape()[0];
         std::vector<int64_t> axes_data;
         if (!acrossSpatial) {
-            // if (batch > 1) {
-            //     axes_data.push_back(0);
-            // }
             axes_data.push_back(1);
         } else {
             axes_data.resize(ieInpNode->get_shape().size());
@@ -337,31 +333,29 @@ public:
                                            1, std::multiplies<size_t>());
             std::vector<float> ones(size, 1);
             auto weights = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, norm->get_shape(), ones.data());
-            auto mul =norm * weights;
+            auto mul = norm * weights;
             return Ptr<BackendNode>(new InfEngineNgraphNode(mul));
         }
         else
         {
             CV_Assert(numChannels == blobs[0].total());
-            std::vector<int64_t> axis(ieInpNode->get_shape().size(), 0);
-            std::iota(axis.begin() + 1, axis.end(), 2);
             auto axes_w = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                                           ngraph::Shape({axis.size()}), axis.data());
+                                           ngraph::Shape{1}, std::vector<int64_t>{1});
             auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
                                            ngraph::Shape({ieInpNode->get_shape().size()}), ieInpNode->get_shape().data());
             if (blobs[0].total() == 1) {
                 auto weights = std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
                                 ngraph::Shape{numChannels}, blobs[0].data);
-                auto new_weights = std::make_shared<ngraph::op::DynBroadcast>(weights, shapes, axes_w);
-
-                auto mul =norm * new_weights;
+                auto new_weights = std::make_shared<ngraph::op::v1::Broadcast>(weights, shapes, axes_w);
+                auto mul = norm * new_weights;
                 return Ptr<BackendNode>(new InfEngineNgraphNode(mul));
             } else {
                 // weights->get_shape().size() > 1 ~> channel_shared = false
                 auto weights = std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
                                 ngraph::Shape{batch, numChannels}, blobs[0].data);
-                auto new_weights = std::make_shared<ngraph::op::DynBroadcast>(weights, shapes, axes_w);
-                auto mul =norm * new_weights;
+
+                auto new_weights = std::make_shared<ngraph::op::v1::Broadcast>(weights, shapes, axes_w);
+                auto mul = norm * new_weights;
                 return Ptr<BackendNode>(new InfEngineNgraphNode(mul));
             }
         }

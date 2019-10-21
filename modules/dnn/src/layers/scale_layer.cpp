@@ -244,14 +244,14 @@ public:
                       std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
                                                              ngraph::Shape({numChannels}), std::vector<float>(numChannels, 0).data());
 
-        std::vector<int64_t> axis(ieInpNode->get_shape().size() - 1, 0);
-        std::iota(axis.begin() + 1, axis.end(), 2);
-
-        std::vector<int64_t> shape_data(ieInpNode->get_shape().begin(), ieInpNode->get_shape().end());
-        auto axes   = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({axis.size()}), axis.data());
-        auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({shape_data.size()}), shape_data.data());
-        auto shift  = std::make_shared<ngraph::op::DynBroadcast>(bias, shapes, axes);
-        auto scale  = std::make_shared<ngraph::op::DynBroadcast>(weight, shapes, axes);
+        auto shape_data = ieInpNode->get_shape();
+        shape_data[1] = numChannels;
+        auto axes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
+                                     ngraph::Shape({1}), std::vector<int64_t>{1});
+        auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
+                                       ngraph::Shape({shape_data.size()}), shape_data.data());
+        auto shift  = std::make_shared<ngraph::op::v1::Broadcast>(bias, shapes, axes);
+        auto scale  = std::make_shared<ngraph::op::v1::Broadcast>(weight, shapes, axes);
 
         auto scale_node = std::make_shared<ngraph::op::Multiply>(ieInpNode, scale);
         auto scale_shift = std::make_shared<ngraph::op::Add>(scale_node, shift);
