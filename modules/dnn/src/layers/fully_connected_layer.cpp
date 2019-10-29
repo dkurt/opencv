@@ -45,6 +45,7 @@
 #include "../op_halide.hpp"
 #include "../op_inf_engine.hpp"
 #include "../ie_ngraph.hpp"
+// #include <ngraph_ops/matmul_bias.hpp>
 
 #include <opencv2/dnn/shape_utils.hpp>
 
@@ -466,18 +467,34 @@ public:
         auto& ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
         auto batch = ieInpNode->get_shape()[0];
 
-        std::vector<int64_t> data = {(int64_t)batch, (int64_t)blobs[0].size[1]};
+        std::vector<size_t> data = {(size_t)batch, (size_t)blobs[0].size[1]};
         auto new_shape = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{2}, data.data());
-        auto inp = std::make_shared<ngraph::op::DynReshape>(ieInpNode, new_shape);
+        auto inp = std::make_shared<ngraph::op::DynReshape>(ieInpNode, new_shape, true);
 
-        Mat res = blobs[0].t();
+        auto precision = (preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD) ?
+                          ngraph::element::f16 : ngraph::element::f32;
+
+        Mat floats_data = blobs[0].t();
+        Mat halfs_data(1, blobs[0].total(), CV_16SC1);
+        if (precision == ngraph::element::f16) {
+            convertFp16(floats_data, halfs_data);
+        }
         std::vector<size_t> weight_shape = {(size_t)blobs[0].size[1], (size_t)blobs[0].size[0]};
-        auto ieWeights = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, weight_shape, res.data);
+        auto ieWeights = std::make_shared<ngraph::op::Constant>(precision, weight_shape,
+                         precision == ngraph::element::f16 ? halfs_data.data : floats_data.data);
 
         auto dot = std::make_shared<ngraph::op::Dot>(inp, ieWeights);
+
         if (bias) {
             std::vector<size_t> bias_shape = {(size_t)blobs[1].size[1]};
-            auto bias_node = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, bias_shape, blobs[1].data);
+
+            Mat halfs_data(1, blobs[1].total(), CV_16SC1);
+            if (precision == ngraph::element::f16) {
+                convertFp16(blobs[1], halfs_data);
+            }
+
+            auto bias_node = std::make_shared<ngraph::op::Constant>(precision, bias_shape,
+                             precision == ngraph::element::f16 ? halfs_data.data : blobs[1].data);
             auto fc = std::make_shared<ngraph::op::Add>(dot, bias_node, ngraph::op::AutoBroadcastType::NUMPY);
             return Ptr<BackendNode>(new InfEngineNgraphNode(fc));
         }

@@ -1920,7 +1920,13 @@ void initNgraphBackend()
                                           inpWrapper->dataPtr->getName());
                     if (iter == inputNames.end()) {
                         inputNames.push_back(inpWrapper->dataPtr->getName());
-                        inputs.push_back(inpLd.outputBlobs[cons_inp]);
+                        if (preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD) {
+                            Mat halfsData(1, inpLd.outputBlobs[cons_inp].size, CV_16SC1);
+                            convertFp16(inpLd.outputBlobs[cons_inp], halfsData);
+                            inputs.push_back(halfsData);
+                        } else {
+                            inputs.push_back(inpLd.outputBlobs[cons_inp]);
+                        }
                     }
                     curr_pos = cons + 1;
                 }
