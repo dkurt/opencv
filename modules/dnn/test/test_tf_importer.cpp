@@ -91,8 +91,7 @@ public:
         cv::Mat input = blobFromNPY(inpPath);
         cv::Mat ref = blobFromNPY(outPath);
         checkBackend(&input, &ref);
-        std::cout << "input " << input.size << '\n';
-        std::cout << "ref " << ref.size << '\n';
+
         Net net;
         if (memoryLoad)
         {
@@ -113,6 +112,7 @@ public:
             net = readNetFromTensorflow(netPath, netConfig);
 
         ASSERT_FALSE(net.empty());
+
         net.setPreferableBackend(backend);
         net.setPreferableTarget(target);
         net.setInput(input);
@@ -606,7 +606,6 @@ TEST_P(Test_TensorFlow_nets, EAST_text_detection)
     Mat img = imread(imgPath);
     Mat inp = blobFromImage(img, 1.0, Size(), Scalar(123.68, 116.78, 103.94), true, false);
     net.setInput(inp);
-
 
     std::vector<Mat> outs;
     std::vector<String> outNames(2);

@@ -55,19 +55,7 @@ public:
         net.setPreferableTarget(target);
 
         net.setInput(inp);
-        Mat out = net.forward();
-// net.dumpToFile("densenet.dot");
-//
-// Net netDefault = readNetFromONNX(onnxmodel);
-// ASSERT_FALSE(netDefault.empty());
-//
-// netDefault.setPreferableBackend(DNN_BACKEND_OPENCV);
-// netDefault.setPreferableTarget(target);
-//
-// netDefault.setInput(inp);
-//  ref = netDefault.forward("");
-std::cout << "inp " << inp.size << '\n';
-std::cout << "ref " << ref.size << '\n';
+        Mat out = net.forward("");
 
         if (useSoftmax)
         {

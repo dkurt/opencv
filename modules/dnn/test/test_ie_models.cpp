@@ -151,16 +151,6 @@ void runIE(Target target, const std::string& xmlPath, const std::string& binPath
 
     CNNNetwork net = reader.getNetwork();
 
-// std::cout << "getPrecision " <<cnn.getPrecision() << '\n';
-    // if (target == DNN_TARGET_MYRIAD) {
-    //     net.setPrecision(InferenceEngine::Precision::FP16);
-    // }
-    //
-    // auto layers = cnn.allLayers();
-    // for (auto& layer : layers) {
-    //     InferenceEngine::CNNLayerPtr data = layer.second;
-    //     convertFp16()
-    // }
 
     std::string device_name;
 
