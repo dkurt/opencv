@@ -231,6 +231,7 @@ public:
         CV_Assert(!blobs.empty());
         const size_t numChannels = blobs[0].total();
         auto ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
+        auto precisionFP16 = preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD;
 
         auto weight = hasWeights ?
                       std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
@@ -244,8 +245,26 @@ public:
                       std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
                                                              ngraph::Shape({numChannels}), std::vector<float>(numChannels, 0).data());
 
+
+        if (precisionFP16) {
+            Mat halfsw(1, blobs[0].total(), CV_16SC1);
+            if (hasWeights) {
+                convertFp16(blobs[0], halfsw);
+            } else {
+                halfsw = Mat::ones(1, blobs[0].total(), CV_16SC1);
+            }
+            weight = std::make_shared<ngraph::op::Constant>(ngraph::element::f16, ngraph::Shape({numChannels}), halfsw.data);
+
+            Mat halfsb(1, blobs.back().total(), CV_16SC1);
+            if (hasBias) {
+                convertFp16(blobs.back(), halfsb);
+            } else {
+                halfsb = Mat::zeros(1, blobs.back().total(), CV_16SC1);
+            }
+            bias = std::make_shared<ngraph::op::Constant>(ngraph::element::f16, ngraph::Shape({numChannels}), halfsb.data);
+        }
+
         auto shape_data = ieInpNode->get_shape();
-        shape_data[1] = numChannels;
         auto axes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
                                      ngraph::Shape({1}), std::vector<int64_t>{1});
         auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,

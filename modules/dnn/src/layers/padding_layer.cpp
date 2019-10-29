@@ -214,6 +214,7 @@ public:
                                         const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
         auto& ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
+        auto precisionFP16 = preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD;
         std::vector<int64_t> begins(paddings.size(), 0), ends(paddings.size(), 0);
         for (int i = 0; i < paddings.size(); ++i)
         {
@@ -223,7 +224,17 @@ public:
         auto padding_below = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{begins.size()}, begins.data());
         auto padding_above = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{ends.size()}, ends.data());
         auto pad_mode = paddingType == "constant" ? ngraph::op::PadMode::CONSTANT : ngraph::op::PadMode::REFLECT;
-        auto arg_pad_value = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape(), &paddingValue);
+
+        std::shared_ptr<ngraph::op::Constant> arg_pad_value;
+        if (precisionFP16) {
+            Mat floats_coeffs(1, 1, CV_32F, &paddingValue);
+            Mat halfs_coeffs(1, 1, CV_16SC1);
+            convertFp16(floats_coeffs, halfs_coeffs);
+            arg_pad_value = std::make_shared<ngraph::op::Constant>(ngraph::element::f16, ngraph::Shape(), halfs_coeffs.data);
+        } else {
+            arg_pad_value = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape(), &paddingValue);
+        }
+
         auto pad = paddingType == "constant" ?
              std::make_shared<ngraph::op::v1::Pad>(ieInpNode, padding_below, padding_above, arg_pad_value, pad_mode) :
              std::make_shared<ngraph::op::v1::Pad>(ieInpNode, padding_below, padding_above, pad_mode);
