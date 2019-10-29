@@ -72,8 +72,6 @@ public:
         // Output has shape 1x1xNx7 where N - number of detections.
         // An every detection is a vector of values [id, classId, confidence, left, top, right, bottom]
         Mat out = net.forward();
-
-        net.dumpToFile("FasterRCNN_vgg16.dot");
         scoreDiff = scoreDiff ? scoreDiff : default_l1;
         iouDiff = iouDiff ? iouDiff : default_lInf;
         normAssertDetections(ref, out, ("model name: " + model).c_str(), 0.8, scoreDiff, iouDiff);
