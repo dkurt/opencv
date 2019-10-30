@@ -223,16 +223,16 @@ public:
         }
         auto padding_below = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{begins.size()}, begins.data());
         auto padding_above = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{ends.size()}, ends.data());
-        auto pad_mode = paddingType == "constant" ? ngraph::op::PadMode::CONSTANT : ngraph::op::PadMode::REFLECT;
+        auto pad_mode = paddingType == "constant" ? ngraph::op::PadMode::CONSTANT : ngraph::op::PadMode::REFLECT; // SYMMETRIC
 
         std::shared_ptr<ngraph::op::Constant> arg_pad_value;
+        Mat float_coeffs(1, 1, CV_32F, &paddingValue);
         if (precisionFP16) {
-            Mat floats_coeffs(1, 1, CV_32F, &paddingValue);
             Mat halfs_coeffs(1, 1, CV_16SC1);
-            convertFp16(floats_coeffs, halfs_coeffs);
-            arg_pad_value = std::make_shared<ngraph::op::Constant>(ngraph::element::f16, ngraph::Shape(), halfs_coeffs.data);
+            convertFp16(float_coeffs, halfs_coeffs);
+            arg_pad_value = std::make_shared<ngraph::op::Constant>(ngraph::element::f16, ngraph::Shape{}, halfs_coeffs.data);
         } else {
-            arg_pad_value = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape(), &paddingValue);
+            arg_pad_value = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{}, &float_coeffs.data);
         }
 
         auto pad = paddingType == "constant" ?
