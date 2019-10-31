@@ -474,31 +474,28 @@ public:
         auto precision = (preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD) ?
                           ngraph::element::f16 : ngraph::element::f32;
 
-        Mat floats_data = blobs[0].t();
-        Mat halfs_data(1, blobs[0].total(), CV_16SC1);
+        std::vector<size_t> weight_shape{(size_t)blobs[0].size[0], (size_t)blobs[0].size[1]};
+        Mat halfs_data(1, blobs[0].size, CV_16SC1);
         if (precision == ngraph::element::f16) {
-            convertFp16(floats_data, halfs_data);
+            convertFp16(blobs[0], halfs_data);
         }
-        std::vector<size_t> weight_shape = {(size_t)blobs[0].size[1], (size_t)blobs[0].size[0]};
         auto ieWeights = std::make_shared<ngraph::op::Constant>(precision, weight_shape,
-                         precision == ngraph::element::f16 ? halfs_data.data : floats_data.data);
-
-        auto dot = std::make_shared<ngraph::op::Dot>(inp, ieWeights);
+                         precision == ngraph::element::f16 ? halfs_data.data : blobs[0].data);
+        auto matmul = std::make_shared<ngraph::op::MatMul>(inp, ieWeights, false, true);
 
         if (bias) {
-            std::vector<size_t> bias_shape = {(size_t)blobs[1].size[1]};
-
-            Mat halfs_data(1, blobs[1].total(), CV_16SC1);
+            std::vector<size_t> bias_shape{(size_t)blobs[1].size[0], (size_t)blobs[1].size[1]};
+            Mat halfs_data(1, blobs[1].size, CV_16SC1);
             if (precision == ngraph::element::f16) {
                 convertFp16(blobs[1], halfs_data);
             }
 
             auto bias_node = std::make_shared<ngraph::op::Constant>(precision, bias_shape,
                              precision == ngraph::element::f16 ? halfs_data.data : blobs[1].data);
-            auto fc = std::make_shared<ngraph::op::Add>(dot, bias_node, ngraph::op::AutoBroadcastType::NUMPY);
+            auto fc = matmul + bias_node;
             return Ptr<BackendNode>(new InfEngineNgraphNode(fc));
         }
-        return Ptr<BackendNode>(new InfEngineNgraphNode(dot));
+        return Ptr<BackendNode>(new InfEngineNgraphNode(matmul));
     }
 #endif  // HAVE_INF_ENGINE
 
