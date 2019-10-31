@@ -185,6 +185,7 @@ class Builder:
     def config(self):
         cmd = self.get_cmake_cmd()
         cmd.append(self.opencv_dir)
+        print(cmd)
         execute(cmd)
 
     def build_opencvjs(self):
