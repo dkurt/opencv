@@ -64,7 +64,7 @@ public:
 
     virtual bool supportBackend(int backendId) CV_OVERRIDE
     {
-        if (backendId == DNN_BACKEND_INFERENCE_ENGINE || (backendId == DNN_BACKEND_NGRAPH && preferableTarget == DNN_TARGET_CPU))
+        if (backendId == DNN_BACKEND_INFERENCE_ENGINE || backendId == DNN_BACKEND_NGRAPH)
         {
             if (pnorm != 2)
                 return false;
@@ -314,7 +314,10 @@ public:
                                         const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
         auto& ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
-        size_t batch = ieInpNode->get_shape()[0];
+        const size_t batch = ieInpNode->get_shape()[0];
+        const size_t numChannels = ieInpNode->get_shape()[1];
+        auto precisionFP16 = preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD;
+
         std::vector<int64_t> axes_data;
         if (!acrossSpatial) {
             axes_data.push_back(1);
@@ -326,13 +329,14 @@ public:
         auto axes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{axes_data.size()}, axes_data);
         auto norm = std::make_shared<ngraph::op::NormalizeL2>(ieInpNode, axes, epsilon, ngraph::op::EpsMode::ADD);
 
-        const size_t numChannels = ieInpNode->get_shape()[1];
         if (blobs.empty())
         {
             size_t size = std::accumulate(norm->get_shape().begin(), norm->get_shape().end(),
-                                           1, std::multiplies<size_t>());
-            std::vector<float> ones(size, 1);
-            auto weights = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, norm->get_shape(), ones.data());
+                                          1, std::multiplies<size_t>());
+
+            Mat ones = precisionFP16 ? Mat::ones(1, size, CV_16SC1) : Mat::ones(1, size, CV_32FC1);
+            auto weights = std::make_shared<ngraph::op::Constant>(precisionFP16 ?
+                           ngraph::element::f16 : ngraph::element::f32, norm->get_shape(), ones.data);
             auto mul = norm * weights;
             return Ptr<BackendNode>(new InfEngineNgraphNode(mul));
         }
@@ -340,20 +344,27 @@ public:
         {
             CV_Assert(numChannels == blobs[0].total());
             auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                                           ngraph::Shape({ieInpNode->get_shape().size()}), ieInpNode->get_shape().data());
+                                           ngraph::Shape{ieInpNode->get_shape().size()}, ieInpNode->get_shape().data());
 
+            Mat halfsw(1, numChannels, CV_16SC1);
+            if (precisionFP16) {
+                convertFp16(blobs[0], halfsw);
+            }
             if (blobs[0].total() == 1) {
                 auto axes_w = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                    ngraph::Shape{1}, std::vector<int64_t>{1});
-                auto weights = std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
-                                ngraph::Shape{numChannels}, blobs[0].data);
+                              ngraph::Shape{1}, std::vector<int64_t>{1});
+
+                auto weights = std::make_shared<ngraph::op::Constant>(precisionFP16 ?
+                               ngraph::element::f16 : ngraph::element::f32, ngraph::Shape{numChannels},
+                               precisionFP16 ? halfsw.data : blobs[0].data);
                 auto new_weights = std::make_shared<ngraph::op::v1::Broadcast>(weights, shapes, axes_w);
                 auto mul = norm * new_weights;
                 return Ptr<BackendNode>(new InfEngineNgraphNode(mul));
             } else {
                 // weights->get_shape().size() > 1 ~> channel_shared = false
-                auto weights = std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
-                                ngraph::Shape{batch, numChannels}, blobs[0].data);
+                auto weights = std::make_shared<ngraph::op::Constant>(precisionFP16 ?
+                               ngraph::element::f16 : ngraph::element::f32, ngraph::Shape{batch, numChannels},
+                               precisionFP16 ? halfsw.data : blobs[0].data);
 
                 auto axes_w = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
                                                ngraph::Shape{2}, std::vector<int64_t>{0, 1});
