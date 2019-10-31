@@ -470,7 +470,6 @@ public:
         std::vector<size_t> data = {(size_t)batch, (size_t)blobs[0].size[1]};
         auto new_shape = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{2}, data.data());
         auto inp = std::make_shared<ngraph::op::DynReshape>(ieInpNode, new_shape, true);
-
         auto precision = (preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD) ?
                           ngraph::element::f16 : ngraph::element::f32;
 
@@ -484,15 +483,15 @@ public:
         auto matmul = std::make_shared<ngraph::op::MatMul>(inp, ieWeights, false, true);
 
         if (bias) {
-            std::vector<size_t> bias_shape{(size_t)blobs[1].size[0], (size_t)blobs[1].size[1]};
-            Mat halfs_data(1, blobs[1].size, CV_16SC1);
+            std::vector<size_t> bias_shape{(size_t)blobs[1].size[1]};
+            Mat halfs_data(1, blobs[1].size[1], CV_16SC1);
             if (precision == ngraph::element::f16) {
                 convertFp16(blobs[1], halfs_data);
             }
 
             auto bias_node = std::make_shared<ngraph::op::Constant>(precision, bias_shape,
                              precision == ngraph::element::f16 ? halfs_data.data : blobs[1].data);
-            auto fc = matmul + bias_node;
+            auto fc = std::make_shared<ngraph::op::Add>(matmul, bias_node, ngraph::op::AutoBroadcastType::NUMPY);
             return Ptr<BackendNode>(new InfEngineNgraphNode(fc));
         }
         return Ptr<BackendNode>(new InfEngineNgraphNode(matmul));
