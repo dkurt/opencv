@@ -538,6 +538,7 @@ public:
         if (!coeffs.empty()) {
             auto coeff = std::make_shared<ngraph::op::Constant>(precision, ngraph::Shape{1},
                         precision == ngraph::element::f16 ? (void*)&halfs_coeffs.at<short>(0, 0) : (void*)&coeffs[0]);
+            curr_node = std::make_shared<ngraph::op::Multiply>(curr_node, coeff, ngraph::op::AutoBroadcastType::NUMPY);
         }
 
         for (size_t i = 1; i < nodes.size(); i++)
@@ -545,7 +546,7 @@ public:
             auto& next_node = nodes[i].dynamicCast<InfEngineNgraphNode>()->node;
             if (!coeffs.empty()) {
                 auto coeff = std::make_shared<ngraph::op::Constant>(precision, ngraph::Shape{1},
-                    precision == ngraph::element::f16 ? (void*)&halfs_coeffs.at<short>(0, i) : (void*)&coeffs[i]);
+                             precision == ngraph::element::f16 ? (void*)&halfs_coeffs.at<short>(0, i) : (void*)&coeffs[i]);
                 next_node = std::make_shared<ngraph::op::Multiply>(next_node, coeff, ngraph::op::AutoBroadcastType::NUMPY);
             }
             switch (op) {
