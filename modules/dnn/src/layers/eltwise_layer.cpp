@@ -100,7 +100,7 @@ public:
     {
         return backendId == DNN_BACKEND_OPENCV ||
                backendId == DNN_BACKEND_HALIDE ||
-               (backendId == DNN_BACKEND_INFERENCE_ENGINE && !variableChannels &&
+               (((backendId == DNN_BACKEND_INFERENCE_ENGINE && !variableChannels) || backendId == DNN_BACKEND_NGRAPH) &&
                 (preferableTarget != DNN_TARGET_OPENCL || coeffs.empty()));
     }
 
