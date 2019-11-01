@@ -75,7 +75,7 @@ endif()
 set(include_dirs ${fw_inc})
 set(sources_options "")
 # set(libs libprotobuf ${LAPACK_LIBRARIES})
-file(GLOB ngraph_libs "/home/liubov/dldt/bin/intel64/Release/lib/libngraph.so")
+file(GLOB ngraph_libs "${OpenVINO_MAIN_SOURCE_DIR}/bin/intel64/Release/lib/libngraph.so")
 set(libs libprotobuf ${LAPACK_LIBRARIES} ${ngraph_libs})
 
 if(OPENCV_DNN_OPENCL AND HAVE_OPENCL)
@@ -84,9 +84,8 @@ else()
   set(sources_options EXCLUDE_OPENCL)
 endif()
 
-
-list(APPEND include_dirs "/home/liubov/dldt/ngraph/src/ngraph")
-list(APPEND include_dirs "/home/liubov/dldt/ngraph/src/")
+list(APPEND include_dirs "${OpenVINO_MAIN_SOURCE_DIR}/ngraph/src/ngraph")
+list(APPEND include_dirs "${OpenVINO_MAIN_SOURCE_DIR}/ngraph/src/")
 
 ocv_module_include_directories(${include_dirs})
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
