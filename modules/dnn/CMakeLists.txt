@@ -74,9 +74,9 @@ endif()
 
 set(include_dirs ${fw_inc})
 set(sources_options "")
-# set(libs libprotobuf ${LAPACK_LIBRARIES})
-file(GLOB ngraph_libs "${OpenVINO_MAIN_SOURCE_DIR}/bin/intel64/Release/lib/libngraph.so")
-set(libs libprotobuf ${LAPACK_LIBRARIES} ${ngraph_libs})
+
+find_package(ngraph REQUIRED)
+set(libs libprotobuf ${LAPACK_LIBRARIES})
 
 if(OPENCV_DNN_OPENCL AND HAVE_OPENCL)
   list(APPEND include_dirs ${OPENCL_INCLUDE_DIRS})
@@ -84,8 +84,6 @@ else()
   set(sources_options EXCLUDE_OPENCL)
 endif()
 
-list(APPEND include_dirs "${OpenVINO_MAIN_SOURCE_DIR}/ngraph/src/ngraph")
-list(APPEND include_dirs "${OpenVINO_MAIN_SOURCE_DIR}/ngraph/src/")
 
 ocv_module_include_directories(${include_dirs})
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -94,9 +92,9 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   ocv_append_source_files_cxx_compiler_options(fw_srcs "-Wno-inconsistent-missing-override")  # Clang
 endif()
 ocv_glob_module_sources(${sources_options} SOURCES ${fw_srcs})
-ocv_create_module(${libs} ${INF_ENGINE_TARGET})
+ocv_create_module(${libs} ${INF_ENGINE_TARGET} ngraph::ngraph)
 ocv_add_samples()
-ocv_add_accuracy_tests(${INF_ENGINE_TARGET} ${ngraph_libs})
+ocv_add_accuracy_tests(${INF_ENGINE_TARGET})
 
 set(perf_path "${CMAKE_CURRENT_LIST_DIR}/perf")
 file(GLOB_RECURSE perf_srcs "${perf_path}/*.cpp")
