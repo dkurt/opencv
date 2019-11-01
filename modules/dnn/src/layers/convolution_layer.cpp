@@ -2084,9 +2084,18 @@ public:
        CV_Assert(group == 1);
 
        auto& ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
-       auto type = blobs[0].type() == CV_32F ? ngraph::element::f32 : ngraph::element::f16;
        std::vector<size_t> kernel_shape(&blobs[0].size[0], &blobs[0].size[0] + blobs[0].dims);
-       auto ieWeights = std::make_shared<ngraph::op::Constant>(type, kernel_shape, blobs[0].data);
+
+       auto precision = (preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD) ?
+                         ngraph::element::f16 : ngraph::element::f32;
+       Mat halfs(1, blobs[0].total(), CV_16SC1);
+       if (precision == ngraph::element::f16) {
+           convertFp16(blobs[0], halfs);
+       }
+
+       auto ieWeights = std::make_shared<ngraph::op::Constant>(precision, kernel_shape,
+                        precision == ngraph::element::f16 ? halfs.data : blobs[0].data);
+
 
         if (fusedWeights)
         {
@@ -2128,7 +2137,7 @@ public:
 
         std::cout << "deconv " << deconv->get_shape() << '\n';
 //         if (hasBias()) {
-//             auto bias = std::make_shared<ngraph::op::Constant>(type, ngraph::Shape{(size_t)numOutput}, blobs[1].data);
+//             auto bias = std::make_shared<ngraph::op::Constant>(precision, ngraph::Shape{(size_t)numOutput}, blobs[1].data);
 // std::cout << "bias " << bias->get_shape() << '\n';
 //             std::vector<int64_t> axis(ieInpNode->get_shape().size() - 1, 0);
 //             std::iota(axis.begin() + 1, axis.end(), 2);

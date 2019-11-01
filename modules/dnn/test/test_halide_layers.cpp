@@ -349,8 +349,8 @@ TEST_P(MaxPooling, Accuracy)
         applyTestTag(CV_TEST_TAG_DNN_SKIP_IE_MYRIAD_X, CV_TEST_TAG_DNN_SKIP_IE_2019R1, CV_TEST_TAG_DNN_SKIP_IE_2019R1_1);
 #endif
 
-#if defined(INF_ENGINE_RELEASE) && INF_ENGINE_VER_MAJOR_GE(2019010000)
-    if (backendId == DNN_BACKEND_NGRAPH)
+#if defined(INF_ENGINE_RELEASE) && INF_ENGINE_VER_MAJOR_GE(2019020000)
+    if (backendId == DNN_BACKEND_NGRAPH && stride != Size(1, 1) && pad != Size(0, 0))
         applyTestTag(CV_TEST_TAG_DNN_SKIP_IE_2019R2);
 #endif
 
