@@ -580,16 +580,15 @@ public:
         if (!padMode.empty())
             pad_type = padMode == "VALID" ? ngraph::op::PadType::VALID : ngraph::op::PadType::SAME_UPPER;
 
-        std::shared_ptr<ngraph::op::Constant> bias;
+        Mat halfs_bias;
+        Mat float_bias;
         if (hasBias() || fusedBias)
         {
-            Mat float_bias(1, biasvec.size(), CV_32F, biasvec.data());
-            Mat halfs_bias(1, biasvec.size(), CV_16SC1);
+            float_bias = Mat(1, biasvec.size(), CV_32F, biasvec.data());
+            halfs_bias = Mat(1, biasvec.size(), CV_16SC1);
             if (precision == ngraph::element::f16) {
                 convertFp16(float_bias, halfs_bias);
             }
-            bias = std::make_shared<ngraph::op::Constant>(precision, ngraph::Shape{(size_t)outCn},
-                   precision == ngraph::element::f16 ? halfs_bias.data : float_bias.data);
         }
 
         if (group != 1) {
@@ -605,24 +604,11 @@ public:
 
             if (hasBias() || fusedBias)
             {
-                auto shape = conv_node->get_shape();
-                auto axes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                                             ngraph::Shape({1}), std::vector<int64_t>{1});
-
-                if (preferableTarget == DNN_TARGET_OPENCL && group != outCn) {
-                    auto shapes   = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                                    ngraph::Shape({conv_node->get_shape().size()}), conv_node->get_shape().data());
-                    auto new_bias = std::make_shared<ngraph::op::v1::Broadcast>(bias, shapes, axes);
-
-                    auto conv_bias = conv_node + new_bias;
-                    return Ptr<BackendNode>(new InfEngineNgraphNode(conv_bias));
-                }
-
-                auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                                               ngraph::Shape({shape.size()}), shape.data());
-                auto new_bias = std::make_shared<ngraph::op::v1::Broadcast>(bias, shapes, axes);
-                auto conv_bias = std::make_shared<ngraph::op::Add>(conv_node, new_bias);
-
+                std::vector<size_t> shape(conv_node->get_shape().size(), 1);
+                shape[1] = outCn;
+                auto bias = std::make_shared<ngraph::op::Constant>(precision, ngraph::Shape(shape),
+                       precision == ngraph::element::f16 ? halfs_bias.data : float_bias.data);
+                auto conv_bias = std::make_shared<ngraph::op::Add>(conv_node, bias, ngraph::op::AutoBroadcastType::NUMPY);
                 return Ptr<BackendNode>(new InfEngineNgraphNode(conv_bias));
             }
             return Ptr<BackendNode>(new InfEngineNgraphNode(conv_node));
@@ -637,15 +623,11 @@ public:
 
            if (hasBias() || fusedBias)
            {
-               auto shape = conv_node->get_shape();
-               auto axes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                                            ngraph::Shape({1}), std::vector<int64_t>{1});
-
-               auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                                              ngraph::Shape({shape.size()}), shape.data());
-               auto new_bias = std::make_shared<ngraph::op::v1::Broadcast>(bias, shapes, axes);
-               auto conv_bias = std::make_shared<ngraph::op::Add>(conv_node, new_bias);
-
+               std::vector<size_t> shape(conv_node->get_shape().size(), 1);
+               shape[1] = outCn;
+               auto bias = std::make_shared<ngraph::op::Constant>(precision, ngraph::Shape(shape),
+                            precision == ngraph::element::f16 ? halfs_bias.data : float_bias.data);
+               auto conv_bias = std::make_shared<ngraph::op::Add>(conv_node, bias, ngraph::op::AutoBroadcastType::NUMPY);
                return Ptr<BackendNode>(new InfEngineNgraphNode(conv_bias));
            }
            return Ptr<BackendNode>(new InfEngineNgraphNode(conv_node));

@@ -77,13 +77,11 @@ set(sources_options "")
 
 find_package(ngraph REQUIRED)
 set(libs libprotobuf ${LAPACK_LIBRARIES})
-
 if(OPENCV_DNN_OPENCL AND HAVE_OPENCL)
   list(APPEND include_dirs ${OPENCL_INCLUDE_DIRS})
 else()
   set(sources_options EXCLUDE_OPENCL)
 endif()
-
 
 ocv_module_include_directories(${include_dirs})
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
