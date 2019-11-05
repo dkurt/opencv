@@ -469,7 +469,7 @@ public:
 
         std::vector<size_t> data = {(size_t)batch, (size_t)blobs[0].size[1]};
         auto new_shape = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{2}, data.data());
-        auto inp = std::make_shared<ngraph::op::DynReshape>(ieInpNode, new_shape, true);
+        auto inp = std::make_shared<ngraph::op::v1::Reshape>(ieInpNode, new_shape, true);
         auto precision = (preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD) ?
                           ngraph::element::f16 : ngraph::element::f32;
 
