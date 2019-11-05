@@ -103,7 +103,7 @@ public:
     {
         return backendId == DNN_BACKEND_OPENCV ||
                backendId == DNN_BACKEND_HALIDE ||
-               (((backendId == DNN_BACKEND_INFERENCE_ENGINE && !variableChannels) || backendId == DNN_BACKEND_NGRAPH) &&
+               (((backendId == DNN_BACKEND_INFERENCE_ENGINE || backendId == DNN_BACKEND_NGRAPH) && !variableChannels) &&
                 (preferableTarget != DNN_TARGET_OPENCL || coeffs.empty()));
     }
 
@@ -527,27 +527,28 @@ public:
                                         const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
         auto& curr_node = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
-        auto precision = (preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD) ?
-                          ngraph::element::f16 :  ngraph::element::f32;
-
-        Mat floats_coeffs(1,coeffs.size(), CV_32F, coeffs.data());
-        Mat halfs_coeffs(1, coeffs.size(), CV_16SC1);
-        if (precision == ngraph::element::f16) {
-            convertFp16(floats_coeffs, halfs_coeffs);
-        }
+        bool isPrecisionFP16 = preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD;
         if (!coeffs.empty()) {
-            auto coeff = std::make_shared<ngraph::op::Constant>(precision, ngraph::Shape{1},
-                        precision == ngraph::element::f16 ? (void*)&halfs_coeffs.at<short>(0, 0) : (void*)&coeffs[0]);
-            curr_node = std::make_shared<ngraph::op::Multiply>(curr_node, coeff, ngraph::op::AutoBroadcastType::NUMPY);
+            auto coeff = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{1}, &coeffs[0]);
+            if (isPrecisionFP16) {
+                auto coeff_fp16 = std::make_shared<ngraph::op::Convert>(coeff, ngraph::element::f16);
+                curr_node = std::make_shared<ngraph::op::Multiply>(curr_node, coeff_fp16, ngraph::op::AutoBroadcastType::NUMPY);
+            } else {
+                curr_node = std::make_shared<ngraph::op::Multiply>(curr_node, coeff, ngraph::op::AutoBroadcastType::NUMPY);
+            }
         }
 
         for (size_t i = 1; i < nodes.size(); i++)
         {
             auto& next_node = nodes[i].dynamicCast<InfEngineNgraphNode>()->node;
             if (!coeffs.empty()) {
-                auto coeff = std::make_shared<ngraph::op::Constant>(precision, ngraph::Shape{1},
-                             precision == ngraph::element::f16 ? (void*)&halfs_coeffs.at<short>(0, i) : (void*)&coeffs[i]);
-                next_node = std::make_shared<ngraph::op::Multiply>(next_node, coeff, ngraph::op::AutoBroadcastType::NUMPY);
+                auto coeff = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{1}, &coeffs[i]);
+                if (isPrecisionFP16) {
+                    auto coeff_fp16 = std::make_shared<ngraph::op::Convert>(coeff, ngraph::element::f16);
+                    next_node = std::make_shared<ngraph::op::Multiply>(next_node, coeff_fp16, ngraph::op::AutoBroadcastType::NUMPY);
+                } else {
+                    next_node = std::make_shared<ngraph::op::Multiply>(next_node, coeff, ngraph::op::AutoBroadcastType::NUMPY);
+                }
             }
             switch (op) {
                 case SUM:  curr_node = curr_node + next_node; break;

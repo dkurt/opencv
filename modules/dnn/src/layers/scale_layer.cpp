@@ -231,49 +231,31 @@ public:
         CV_Assert(!blobs.empty());
         const size_t numChannels = blobs[0].total();
         auto ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
-        auto precisionFP16 = preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD;
+        auto isPrecisionFP16 = preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD;
+        std::vector<size_t> shape(ieInpNode->get_shape().size(), 1);
+        shape[1] = numChannels;
 
         auto weight = hasWeights ?
                       std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
-                                                             ngraph::Shape({numChannels}), blobs[0].data) :
+                                                             ngraph::Shape(shape), blobs[0].data) :
                       std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
-                                                             ngraph::Shape({numChannels}), std::vector<float>(numChannels, 1).data());
+                                                             ngraph::Shape(shape), std::vector<float>(numChannels, 1).data());
 
         auto bias   = hasBias ?
                       std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
-                                                             ngraph::Shape({numChannels}), blobs.back().data) :
+                                                             ngraph::Shape(shape), blobs.back().data) :
                       std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
-                                                             ngraph::Shape({numChannels}), std::vector<float>(numChannels, 0).data());
+                                                             ngraph::Shape(shape), std::vector<float>(numChannels, 0).data());
 
-
-        if (precisionFP16) {
-            Mat halfsw(1, blobs[0].total(), CV_16SC1);
-            if (hasWeights) {
-                convertFp16(blobs[0], halfsw);
-            } else {
-                halfsw = Mat::ones(1, blobs[0].total(), CV_16SC1);
-            }
-            weight = std::make_shared<ngraph::op::Constant>(ngraph::element::f16, ngraph::Shape({numChannels}), halfsw.data);
-
-            Mat halfsb(1, blobs.back().total(), CV_16SC1);
-            if (hasBias) {
-                convertFp16(blobs.back(), halfsb);
-            } else {
-                halfsb = Mat::zeros(1, blobs.back().total(), CV_16SC1);
-            }
-            bias = std::make_shared<ngraph::op::Constant>(ngraph::element::f16, ngraph::Shape({numChannels}), halfsb.data);
+        if (isPrecisionFP16) {
+            auto weight_fp16 = std::make_shared<ngraph::op::Convert>(weight, ngraph::element::f16);
+            auto bias_fp16 = std::make_shared<ngraph::op::Convert>(bias, ngraph::element::f16);
+            auto scale_node = std::make_shared<ngraph::op::Multiply>(ieInpNode, weight_fp16, ngraph::op::AutoBroadcastType::NUMPY);
+            auto scale_shift = std::make_shared<ngraph::op::Add>(scale_node, bias_fp16, ngraph::op::AutoBroadcastType::NUMPY);
+            return Ptr<BackendNode>(new InfEngineNgraphNode(scale_shift));
         }
-
-        auto shape_data = ieInpNode->get_shape();
-        auto axes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                                     ngraph::Shape({1}), std::vector<int64_t>{1});
-        auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                                       ngraph::Shape({shape_data.size()}), shape_data.data());
-        auto shift  = std::make_shared<ngraph::op::v1::Broadcast>(bias, shapes, axes);
-        auto scale  = std::make_shared<ngraph::op::v1::Broadcast>(weight, shapes, axes);
-
-        auto scale_node = std::make_shared<ngraph::op::Multiply>(ieInpNode, scale);
-        auto scale_shift = std::make_shared<ngraph::op::Add>(scale_node, shift);
+        auto scale_node = std::make_shared<ngraph::op::Multiply>(ieInpNode, weight, ngraph::op::AutoBroadcastType::NUMPY);
+        auto scale_shift = std::make_shared<ngraph::op::Add>(scale_node, bias, ngraph::op::AutoBroadcastType::NUMPY);
         return Ptr<BackendNode>(new InfEngineNgraphNode(scale_shift));
     }
 #endif  // HAVE_INF_ENGINE
