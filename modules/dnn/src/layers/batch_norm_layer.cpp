@@ -370,30 +370,21 @@ public:
     {
         const size_t numChannels = weights_.total();
         auto ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
-        auto precisionFP16 = preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD;
+        auto isPrecisionFP16 = preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD;
+        std::vector<size_t> shape(ieInpNode->get_shape().size(), 1);
+        shape[1] = numChannels;
 
-        std::shared_ptr<ngraph::op::Constant> weight;
-        std::shared_ptr<ngraph::op::Constant> bias;
-        if (precisionFP16) {
-            Mat halfsw(1, weights_.total(), CV_16SC1);
-            Mat halfsb(1, bias_.total(), CV_16SC1);
-            convertFp16(weights_, halfsw);
-            convertFp16(bias_, halfsb);
-            weight = std::make_shared<ngraph::op::Constant>(ngraph::element::f16, ngraph::Shape{numChannels}, halfsw.data);
-            bias   = std::make_shared<ngraph::op::Constant>(ngraph::element::f16, ngraph::Shape{numChannels}, halfsb.data);
-        } else {
-            weight = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{numChannels}, weights_.data);
-            bias   = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{numChannels}, bias_.data);
+        auto weight = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape(shape), weights_.data);
+        auto bias = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape(shape), bias_.data);
+        if (isPrecisionFP16) {
+            auto weight_fp16 = std::make_shared<ngraph::op::Convert>(weight, ngraph::element::f16);
+            auto bias_fp16 = std::make_shared<ngraph::op::Convert>(bias, ngraph::element::f16);
+            auto scale_node = std::make_shared<ngraph::op::Multiply>(ieInpNode, weight_fp16, ngraph::op::AutoBroadcastType::NUMPY);
+            auto scale_shift = std::make_shared<ngraph::op::Add>(scale_node, bias_fp16, ngraph::op::AutoBroadcastType::NUMPY);
+            return Ptr<BackendNode>(new InfEngineNgraphNode(scale_shift));
         }
-
-        auto shape_data = ieInpNode->get_shape();
-        auto axes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape({1}), std::vector<int64_t>{1});
-        auto shapes = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{shape_data.size()}, shape_data.data());
-        auto shift = std::make_shared<ngraph::op::v1::Broadcast>(bias, shapes, axes);
-        auto scale = std::make_shared<ngraph::op::v1::Broadcast>(weight, shapes, axes);
-
-        auto scale_node  = std::make_shared<ngraph::op::Multiply>(ieInpNode, scale);
-        auto scale_shift = std::make_shared<ngraph::op::Add>(scale_node, shift);
+        auto scale_node = std::make_shared<ngraph::op::Multiply>(ieInpNode, weight, ngraph::op::AutoBroadcastType::NUMPY);
+        auto scale_shift = std::make_shared<ngraph::op::Add>(scale_node, bias, ngraph::op::AutoBroadcastType::NUMPY);
         return Ptr<BackendNode>(new InfEngineNgraphNode(scale_shift));
     }
 #endif  // HAVE_INF_ENGINE

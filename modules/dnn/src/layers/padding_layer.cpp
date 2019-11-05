@@ -225,14 +225,11 @@ public:
         auto padding_above = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{ends.size()}, ends.data());
         auto pad_mode = paddingType == "constant" ? ngraph::op::PadMode::CONSTANT : ngraph::op::PadMode::REFLECT; // SYMMETRIC
 
-        std::shared_ptr<ngraph::op::Constant> arg_pad_value;
-        Mat float_coeffs(1, 1, CV_32F, &paddingValue);
-        if (precisionFP16) {
-            Mat halfs_coeffs(1, 1, CV_16SC1);
-            convertFp16(float_coeffs, halfs_coeffs);
-            arg_pad_value = std::make_shared<ngraph::op::Constant>(ngraph::element::f16, ngraph::Shape{}, halfs_coeffs.data);
-        } else {
-            arg_pad_value = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{}, &float_coeffs.data);
+        auto arg_pad_value = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{}, &paddingValue);;
+        if (precisionFP16 && paddingType == "constant") {
+            auto pad_val = std::make_shared<ngraph::op::Convert>(arg_pad_value, ngraph::element::f16);
+            auto pad = std::make_shared<ngraph::op::v1::Pad>(ieInpNode, padding_below, padding_above, pad_val, pad_mode);
+            return Ptr<BackendNode>(new InfEngineNgraphNode(pad));
         }
 
         auto pad = paddingType == "constant" ?
