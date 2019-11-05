@@ -280,7 +280,7 @@ public:
         std::vector<int64_t> out(outShapes[0].begin(), outShapes[0].end());
         auto shape   = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
                        ngraph::Shape{out.size()}, out.data());
-        auto reshape = std::make_shared<ngraph::op::DynReshape>(ieInpNode, shape);
+        auto reshape = std::make_shared<ngraph::op::v1::Reshape>(ieInpNode, shape, true);
         return Ptr<BackendNode>(new InfEngineNgraphNode(reshape));
     }
 #endif  // HAVE_INF_ENGINE

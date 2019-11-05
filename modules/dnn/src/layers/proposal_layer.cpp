@@ -384,7 +384,7 @@ public:
         auto shape   = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
                        ngraph::Shape{1},
                        std::vector<int64_t>{(int64_t)image_shape->get_shape().back()});
-        auto reshape = std::make_shared<ngraph::op::DynReshape>(image_shape, shape);
+        auto reshape = std::make_shared<ngraph::op::v1::Reshape>(image_shape, shape, true);
 
         auto proposal = std::make_shared<ngraph::op::Proposal>(class_probs, class_logits, reshape, attr);
         return Ptr<BackendNode>(new InfEngineNgraphNode(proposal));

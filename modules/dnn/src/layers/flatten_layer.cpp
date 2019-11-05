@@ -200,7 +200,7 @@ virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inp
 
         auto shape   = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
                        ngraph::Shape({outputShapeVec.size()}), outputShapeVec.data());
-        auto reshape = std::make_shared<ngraph::op::DynReshape>(ieInpNode, shape);
+        auto reshape = std::make_shared<ngraph::op::v1::Reshape>(ieInpNode, shape, true);
         return Ptr<BackendNode>(new InfEngineNgraphNode(reshape));
     }
 #endif  // HAVE_INF_ENGINE

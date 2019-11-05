@@ -571,7 +571,6 @@ public:
             CV_Assert(_boxWidths.size() == _boxHeights.size());
             ngraph::op::PriorBoxClusteredAttrs attrs;
             attrs.widths = _boxWidths;
-            attrs.num_priors = _boxWidths.size();
             attrs.heights = _boxHeights;
             attrs.clip = _clip;
             CV_CheckEQ(_offsetsX.size(), (size_t)1, ""); CV_CheckEQ(_offsetsY.size(), (size_t)1, ""); CV_CheckEQ(_offsetsX[0], _offsetsY[0], "");
