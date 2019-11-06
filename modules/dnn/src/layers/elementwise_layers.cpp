@@ -370,14 +370,10 @@ struct ReLUFunctor
     std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node, int preferableTarget)
     {
         if (slope) {
-            std::shared_ptr<ngraph::op::Constant> param;
+            auto param = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{1}, &slope);
             if (preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD) {
-                Mat float_slope(1, 1, CV_32F, &slope);
-                Mat half_slope(1, 1, CV_16SC1);
-                convertFp16(float_slope, half_slope);
-                param = std::make_shared<ngraph::op::Constant>(ngraph::element::f16, ngraph::Shape{1}, half_slope.data);
-            } else {
-                param = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{1}, &slope);
+                auto slope_ = std::make_shared<ngraph::op::Convert>(param, ngraph::element::f16);
+                return std::make_shared<ngraph::op::PRelu>(node, slope_);
             }
             return std::make_shared<ngraph::op::PRelu>(node, param);
         }
@@ -815,14 +811,10 @@ struct AbsValFunctor
         float coeff = -0.999999f;
         auto slope = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{1}, &coeff);
         if (preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD) {
-            Mat float_slope(1, 1, CV_32F, &coeff);
-            Mat half_slope(1, 1, CV_16SC1);
-            convertFp16(float_slope, half_slope);
-            slope = std::make_shared<ngraph::op::Constant>(ngraph::element::f16, ngraph::Shape{1}, half_slope.data);
+            auto slope_ = std::make_shared<ngraph::op::Convert>(slope, ngraph::element::f16);
+            return std::make_shared<ngraph::op::PRelu>(node, slope_);
         }
         return std::make_shared<ngraph::op::PRelu>(node, slope);
-
-
     }
 #endif  // HAVE_INF_ENGINE
 
@@ -1026,18 +1018,15 @@ struct PowerFunctor
         auto power_node = std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
                                                                  ngraph::Shape{1}, &power);
 
-        if (preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD) {
-            std::vector<float> params{scale, shift, power};
-            Mat float_params(1, params.size(), CV_32F, params.data());
-            Mat half_params(1,  params.size(), CV_16SC1);
-            convertFp16(float_params, half_params);
-            scale_node = std::make_shared<ngraph::op::Constant>(ngraph::element::f16,
-                                                                ngraph::Shape{1}, (void*)&half_params.at<short>(0, 0));
-            shift_node = std::make_shared<ngraph::op::Constant>(ngraph::element::f16,
-                                                                ngraph::Shape{1}, (void*)&half_params.at<short>(0, 1));
-            power_node = std::make_shared<ngraph::op::Constant>(ngraph::element::f16,
-                                                                ngraph::Shape{1}, (void*)&half_params.at<short>(0, 2));
-        }
+         if (preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD) {
+             auto scale_ = std::make_shared<ngraph::op::Convert>(scale_node, ngraph::element::f16);
+             auto shift_ = std::make_shared<ngraph::op::Convert>(shift_node, ngraph::element::f16);
+             auto power_ = std::make_shared<ngraph::op::Convert>(power_node, ngraph::element::f16);
+
+             auto mul = std::make_shared<ngraph::op::Multiply>(scale_, node, ngraph::op::AutoBroadcastType::NUMPY);
+             auto scale_shift = std::make_shared<ngraph::op::Add>(mul, shift_, ngraph::op::AutoBroadcastType::NUMPY);
+             return std::make_shared<ngraph::op::Power>(scale_shift, power_, ngraph::op::AutoBroadcastType::NUMPY);
+         }
         auto mul = std::make_shared<ngraph::op::Multiply>(scale_node, node, ngraph::op::AutoBroadcastType::NUMPY);
         auto scale_shift = std::make_shared<ngraph::op::Add>(mul, shift_node, ngraph::op::AutoBroadcastType::NUMPY);
         return std::make_shared<ngraph::op::Power>(scale_shift, power_node, ngraph::op::AutoBroadcastType::NUMPY);
@@ -1189,9 +1178,8 @@ struct ChannelsPReLUFunctor
         auto slope = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{numChannels}, scale.data);
 
         if (preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD) {
-            Mat half_slope(1, numChannels, CV_16SC1);
-            convertFp16(scale, half_slope);
-            slope = std::make_shared<ngraph::op::Constant>(ngraph::element::f16, ngraph::Shape{numChannels}, half_slope.data);
+            auto slope_ = std::make_shared<ngraph::op::Convert>(slope, ngraph::element::f16);
+            return std::make_shared<ngraph::op::PRelu>(node, slope_);
         }
         return std::make_shared<ngraph::op::PRelu>(node, slope);
     }
