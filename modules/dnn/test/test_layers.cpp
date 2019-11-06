@@ -238,8 +238,9 @@ TEST_P(Test_Caffe_layers, Concat)
     if (backend == DNN_BACKEND_INFERENCE_ENGINE && target == DNN_TARGET_MYRIAD)
         applyTestTag(CV_TEST_TAG_DNN_SKIP_IE_MYRIAD, CV_TEST_TAG_DNN_SKIP_IE_2019R1, CV_TEST_TAG_DNN_SKIP_IE_2019R1_1);
 #elif INF_ENGINE_VER_MAJOR_EQ(2019020000)
-    if ((backend == DNN_BACKEND_INFERENCE_ENGINE || backend == DNN_BACKEND_NGRAPH) && target == DNN_TARGET_OPENCL)
-        applyTestTag(CV_TEST_TAG_DNN_SKIP_IE_OPENCL, CV_TEST_TAG_DNN_SKIP_IE_2019R2);
+    if ((backend == DNN_BACKEND_INFERENCE_ENGINE || backend == DNN_BACKEND_NGRAPH) &&
+        (target == DNN_TARGET_OPENCL || target == DNN_TARGET_OPENCL_FP16))
+        applyTestTag(CV_TEST_TAG_DNN_SKIP_IE_OPENCL, CV_TEST_TAG_DNN_SKIP_IE_OPENCL_FP16, CV_TEST_TAG_DNN_SKIP_IE_2019R2);
 #endif
 #endif
     testLayerUsingCaffeModels("layer_concat");
@@ -301,7 +302,8 @@ TEST_P(Test_Caffe_layers, Eltwise)
 
 TEST_P(Test_Caffe_layers, PReLU)
 {
-    testLayerUsingCaffeModels("layer_prelu", true);
+    double lInf = (target == DNN_TARGET_MYRIAD || target == DNN_TARGET_OPENCL_FP16) ? 0.021 : 0.0;
+    testLayerUsingCaffeModels("layer_prelu", true, true, 0.0, lInf);
 }
 
 // TODO: fix an unstable test case
