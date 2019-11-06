@@ -96,7 +96,7 @@ public:
             return bias == (int)bias;
         }
         if (backendId == DNN_BACKEND_NGRAPH) {
-            return type == CHANNEL_NRM && bias == 1;
+            return type == CHANNEL_NRM && bias == (int)bias;;
         }
         return backendId == DNN_BACKEND_OPENCV || backendId == DNN_BACKEND_HALIDE;
     }

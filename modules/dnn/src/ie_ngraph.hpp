@@ -88,7 +88,7 @@ public:
     void forward(const std::vector<Ptr<BackendWrapper> >& outBlobsWrappers, bool isAsync);
 
     void initPlugin(InferenceEngine::CNNNetwork& net);
-    ngraph::ParameterVector setInputs(const std::vector<cv::Mat>& inputs, const std::vector<std::string>& names);
+    ngraph::ParameterVector setInputs(const std::vector<cv::Mat>& inputs, const std::vector<std::string>& names, int target);
 
     void setUnconnectedNodes(Ptr<InfEngineNgraphNode>& node);
     void addBlobs(const std::vector<cv::Ptr<BackendWrapper> >& ptrs);

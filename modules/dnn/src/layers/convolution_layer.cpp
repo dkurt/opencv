@@ -542,96 +542,67 @@ public:
         const int outCn = blobs[0].size[0];
         const int inpGroupCn = blobs[0].size[1];
         const int group = inpCn / inpGroupCn;
-
-        auto precision = (preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD) ?
-                          ngraph::element::f16 : ngraph::element::f32;
+        auto isPrecisionFP16 = preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD;
 
         std::vector<size_t> kernel_shape(&blobs[0].size[0], &blobs[0].size[0] + blobs[0].dims);
-        Mat halfs(1, blobs[0].total(), CV_16SC1);
-        if (precision == ngraph::element::f16) {
-            convertFp16(blobs[0], halfs);
-        }
 
-        auto ieWeights = std::make_shared<ngraph::op::Constant>(precision, kernel_shape,
-                         precision == ngraph::element::f16 ? halfs.data : blobs[0].data);
-
+        std::shared_ptr<ngraph::Node> ieWeights = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, kernel_shape, blobs[0].data);
         if (fusedWeights)
         {
             if (weightsMat.isContinuous())
             {
-                Mat halfs(1, weightsMat.total(), CV_16SC1);
-                if (precision == ngraph::element::f16) {
-                    convertFp16(weightsMat, halfs);
-                }
-                ieWeights = std::make_shared<ngraph::op::Constant>(precision, kernel_shape,
-                            precision == ngraph::element::f16 ? halfs.data : weightsMat.data);
+                ieWeights = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, kernel_shape, weightsMat.data);
             }
             else
             {
                 Mat newWeights = blobs[0].reshape(1, outCn);
                 Mat cvWeights = weightsMat.colRange(0, newWeights.cols);
                 cvWeights.copyTo(newWeights);
-                ieWeights = std::make_shared<ngraph::op::Constant>(precision, kernel_shape,
-                            precision == ngraph::element::f16 ? halfs.data : blobs[0].data);
+                ieWeights = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, kernel_shape, blobs[0].data);
             }
+        }
+        if (isPrecisionFP16) {
+            ieWeights = std::make_shared<ngraph::op::Convert>(ieWeights, ngraph::element::f16);
         }
 
         ngraph::op::PadType pad_type = ngraph::op::PadType::EXPLICIT;
         if (!padMode.empty())
             pad_type = padMode == "VALID" ? ngraph::op::PadType::VALID : ngraph::op::PadType::SAME_UPPER;
 
-        Mat halfs_bias;
-        Mat float_bias;
+        std::shared_ptr<ngraph::Node> conv_node;
+        if (group != 1) {
+            conv_node = std::make_shared<ngraph::op::GroupConvolution>(
+                                ieInpNode, ieWeights,
+                                ngraph::Strides(strides),
+                                ngraph::Strides(dilations),
+                                ngraph::CoordinateDiff(std::vector<std::ptrdiff_t>(pads_begin.begin(), pads_begin.end())),
+                                ngraph::CoordinateDiff(std::vector<std::ptrdiff_t>(pads_end.begin(),   pads_end.end())),
+                                ngraph::Strides{},
+                                group,
+                                pad_type);
+        } else {
+            conv_node = std::make_shared<ngraph::op::v1::Convolution>(
+                                ieInpNode, ieWeights,
+                                ngraph::Strides(strides),
+                                ngraph::CoordinateDiff(std::vector<std::ptrdiff_t>(pads_begin.begin(), pads_begin.end())),
+                                ngraph::CoordinateDiff(std::vector<std::ptrdiff_t>(pads_end.begin(), pads_end.end())),
+                                ngraph::Strides(dilations),
+                                pad_type);
+        }
+
         if (hasBias() || fusedBias)
         {
-            float_bias = Mat(1, biasvec.size(), CV_32F, biasvec.data());
-            halfs_bias = Mat(1, biasvec.size(), CV_16SC1);
-            if (precision == ngraph::element::f16) {
-                convertFp16(float_bias, halfs_bias);
+            std::vector<size_t> shape(conv_node->get_shape().size(), 1);
+            shape[1] = outCn;
+            std::shared_ptr<ngraph::Node> bias = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape(shape), biasvec.data());
+
+            if (isPrecisionFP16) {
+                bias = std::make_shared<ngraph::op::Convert>(bias, ngraph::element::f16);
             }
+            auto conv_bias = std::make_shared<ngraph::op::Add>(conv_node, bias, ngraph::op::AutoBroadcastType::NUMPY);
+            return Ptr<BackendNode>(new InfEngineNgraphNode(conv_bias));
         }
-
-        if (group != 1) {
-            auto conv_node = std::make_shared<ngraph::op::GroupConvolution>(
-                             ieInpNode, ieWeights,
-                             ngraph::Strides(strides),
-                             ngraph::Strides(dilations),
-                             ngraph::CoordinateDiff(std::vector<std::ptrdiff_t>(pads_begin.begin(), pads_begin.end())),
-                             ngraph::CoordinateDiff(std::vector<std::ptrdiff_t>(pads_end.begin(),   pads_end.end())),
-                             ngraph::Strides{},
-                             group,
-                             pad_type);
-
-            if (hasBias() || fusedBias)
-            {
-                std::vector<size_t> shape(conv_node->get_shape().size(), 1);
-                shape[1] = outCn;
-                auto bias = std::make_shared<ngraph::op::Constant>(precision, ngraph::Shape(shape),
-                       precision == ngraph::element::f16 ? halfs_bias.data : float_bias.data);
-                auto conv_bias = std::make_shared<ngraph::op::Add>(conv_node, bias, ngraph::op::AutoBroadcastType::NUMPY);
-                return Ptr<BackendNode>(new InfEngineNgraphNode(conv_bias));
-            }
-            return Ptr<BackendNode>(new InfEngineNgraphNode(conv_node));
-        } else {
-            auto conv_node = std::make_shared<ngraph::op::v1::Convolution>(
-                             ieInpNode, ieWeights,
-                             ngraph::Strides(strides),
-                             ngraph::CoordinateDiff(std::vector<std::ptrdiff_t>(pads_begin.begin(), pads_begin.end())),
-                             ngraph::CoordinateDiff(std::vector<std::ptrdiff_t>(pads_end.begin(), pads_end.end())),
-                             ngraph::Strides(dilations),
-                             pad_type);
-
-           if (hasBias() || fusedBias)
-           {
-               std::vector<size_t> shape(conv_node->get_shape().size(), 1);
-               shape[1] = outCn;
-               auto bias = std::make_shared<ngraph::op::Constant>(precision, ngraph::Shape(shape),
-                            precision == ngraph::element::f16 ? halfs_bias.data : float_bias.data);
-               auto conv_bias = std::make_shared<ngraph::op::Add>(conv_node, bias, ngraph::op::AutoBroadcastType::NUMPY);
-               return Ptr<BackendNode>(new InfEngineNgraphNode(conv_bias));
-           }
-           return Ptr<BackendNode>(new InfEngineNgraphNode(conv_node));
-        }
+        return Ptr<BackendNode>(new InfEngineNgraphNode(conv_node));
     }
 #endif  // HAVE_INF_ENGINE
 

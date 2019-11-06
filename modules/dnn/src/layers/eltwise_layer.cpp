@@ -522,11 +522,12 @@ public:
     }
 #endif  // HAVE_INF_ENGINE
 
+
 #ifdef HAVE_INF_ENGINE
     virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs,
                                         const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
-        auto& curr_node = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
+        auto curr_node = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
         bool isPrecisionFP16 = preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD;
         if (!coeffs.empty()) {
             auto coeff = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{1}, &coeffs[0]);
@@ -540,7 +541,7 @@ public:
 
         for (size_t i = 1; i < nodes.size(); i++)
         {
-            auto& next_node = nodes[i].dynamicCast<InfEngineNgraphNode>()->node;
+            auto next_node = nodes[i].dynamicCast<InfEngineNgraphNode>()->node;
             if (!coeffs.empty()) {
                 auto coeff = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{1}, &coeffs[i]);
                 if (isPrecisionFP16) {

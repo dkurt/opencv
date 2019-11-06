@@ -8,8 +8,6 @@
 #include "precomp.hpp"
 #include "ie_ngraph.hpp"
 
-// #include <ie_ir_reader.hpp>
-
 #include <opencv2/dnn/shape_utils.hpp>
 
 #ifdef HAVE_INF_ENGINE
@@ -235,18 +233,14 @@ void InfEngineNgraphNet::init(int targetId)
 }
 
 ngraph::ParameterVector InfEngineNgraphNet::setInputs(const std::vector<cv::Mat>& inputs,
-                                   const std::vector<std::string>& names) {
+                                   const std::vector<std::string>& names, int target) {
     CV_Assert_N(inputs.size() == names.size());
     ngraph::ParameterVector current_inp;
     for (size_t i = 0; i < inputs.size(); i++)
     {
         std::vector<size_t> shape(&inputs[i].size[0], &inputs[i].size[0] + inputs[i].dims);
-        auto type = ngraph::element::f32;
-        if (inputs[i].type() == CV_16S) {
-            type = ngraph::element::f16 ;
-        } else if (inputs[i].type() == CV_8U) {
-            type = ngraph::element::u8;
-        }
+        auto type = target == DNN_TARGET_OPENCL_FP16 || target == DNN_TARGET_MYRIAD ?
+                    ngraph::element::f16 : ngraph::element::f32;
 
         auto inp = std::make_shared<ngraph::op::Parameter>(type, ngraph::Shape(shape));
         inp->set_friendly_name(names[i]);
