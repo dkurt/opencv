@@ -71,7 +71,8 @@ static bool DNN_OPENCL_ALLOW_ALL_DEVICES = utils::getConfigurationParameterBool(
 
 static int PARAM_DNN_BACKEND_DEFAULT = (int)utils::getConfigurationParameterSizeT("OPENCV_DNN_BACKEND_DEFAULT",
 #ifdef HAVE_INF_ENGINE
-    (size_t)DNN_BACKEND_INFERENCE_ENGINE
+    // (size_t)DNN_BACKEND_INFERENCE_ENGINE,
+    (size_t)DNN_BACKEND_NGRAPH
 #else
     (size_t)DNN_BACKEND_OPENCV
 #endif
@@ -1920,18 +1921,12 @@ void initNgraphBackend()
                                           inpWrapper->dataPtr->getName());
                     if (iter == inputNames.end()) {
                         inputNames.push_back(inpWrapper->dataPtr->getName());
-                        if (preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD) {
-                            Mat halfsData(1, inpLd.outputBlobs[cons_inp].size, CV_16SC1);
-                            convertFp16(inpLd.outputBlobs[cons_inp], halfsData);
-                            inputs.push_back(halfsData);
-                        } else {
-                            inputs.push_back(inpLd.outputBlobs[cons_inp]);
-                        }
+                        inputs.push_back(inpLd.outputBlobs[cons_inp]);
                     }
                     curr_pos = cons + 1;
                 }
 
-                auto inps = net->setInputs(inputs, inputNames);
+                auto inps = net->setInputs(inputs, inputNames, preferableTarget);
                 for (auto& inp : inps) {
                     inputNodes.emplace_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
                 }

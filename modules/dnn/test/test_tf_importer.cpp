@@ -486,6 +486,11 @@ TEST_P(Test_TensorFlow_nets, Faster_RCNN)
         (INF_ENGINE_VER_MAJOR_LT(2019020000) || target != DNN_TARGET_CPU))
         applyTestTag(CV_TEST_TAG_DNN_SKIP_IE);
 #endif
+    // segfault: /home/liubov/dldt/inference-engine/thirdparty/clDNN/src/gpu/detection_output_cpu.cpp:111:
+    // Assertion `prior_height > 0' failed.
+    if (backend == DNN_BACKEND_NGRAPH && target == DNN_TARGET_OPENCL_FP16)
+        applyTestTag(CV_TEST_TAG_DNN_SKIP_IE_OPENCL_FP16);
+
     if (backend == DNN_BACKEND_OPENCV && target == DNN_TARGET_OPENCL_FP16)
         applyTestTag(CV_TEST_TAG_DNN_SKIP_OPENCL_FP16);
 
