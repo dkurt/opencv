@@ -470,27 +470,21 @@ public:
         std::vector<size_t> data = {(size_t)batch, (size_t)blobs[0].size[1]};
         auto new_shape = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{2}, data.data());
         auto inp = std::make_shared<ngraph::op::v1::Reshape>(ieInpNode, new_shape, true);
-        bool precisionFP16 = preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD;
+        bool isPrecisionFP16 = preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD;
 
         std::vector<size_t> weight_shape{(size_t)blobs[0].size[0], (size_t)blobs[0].size[1]};
-        auto ieWeights = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, weight_shape, blobs[0].data);
-        std::shared_ptr<ngraph::op::MatMul> matmul;
-        if (precisionFP16) {
-            auto weight_fp16 = std::make_shared<ngraph::op::Convert>(ieWeights, ngraph::element::f16);
-            matmul = std::make_shared<ngraph::op::MatMul>(inp, weight_fp16, false, true);
-        } else {
-            matmul = std::make_shared<ngraph::op::MatMul>(inp, ieWeights, false, true);
+        std::shared_ptr<ngraph::Node> ieWeights = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, weight_shape, blobs[0].data);
+        if (isPrecisionFP16) {
+            ieWeights = std::make_shared<ngraph::op::Convert>(ieWeights, ngraph::element::f16);
         }
-
+        auto matmul = std::make_shared<ngraph::op::MatMul>(inp, ieWeights, false, true);
         if (bias) {
-            auto bias_node = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{(size_t)blobs[1].size[1]}, blobs[1].data);
-            std::shared_ptr<ngraph::op::Add> fc;
-            if (precisionFP16) {
-                auto bias_fp16 = std::make_shared<ngraph::op::Convert>(bias_node, ngraph::element::f16);
-                fc = std::make_shared<ngraph::op::Add>(matmul, bias_fp16, ngraph::op::AutoBroadcastType::NUMPY);
-            } else {
-                fc = std::make_shared<ngraph::op::Add>(matmul, bias_node, ngraph::op::AutoBroadcastType::NUMPY);
+            std::shared_ptr<ngraph::Node> bias_node = std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
+                                                      ngraph::Shape{(size_t)blobs[1].size[1]}, blobs[1].data);
+            if (isPrecisionFP16) {
+                bias_node = std::make_shared<ngraph::op::Convert>(bias_node, ngraph::element::f16);
             }
+            auto fc = std::make_shared<ngraph::op::Add>(matmul, bias_node, ngraph::op::AutoBroadcastType::NUMPY);
             return Ptr<BackendNode>(new InfEngineNgraphNode(fc));
         }
         return Ptr<BackendNode>(new InfEngineNgraphNode(matmul));
