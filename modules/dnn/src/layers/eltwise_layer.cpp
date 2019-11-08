@@ -103,8 +103,8 @@ public:
     {
         return backendId == DNN_BACKEND_OPENCV ||
                backendId == DNN_BACKEND_HALIDE ||
-               (((backendId == DNN_BACKEND_INFERENCE_ENGINE || backendId == DNN_BACKEND_NGRAPH) && !variableChannels) &&
-                (preferableTarget != DNN_TARGET_OPENCL || coeffs.empty()));
+               ((((backendId == DNN_BACKEND_INFERENCE_ENGINE && (preferableTarget != DNN_TARGET_OPENCL || coeffs.empty()))
+                || backendId == DNN_BACKEND_NGRAPH) && !variableChannels));
     }
 
     bool getMemoryShapes(const std::vector<MatShape> &inputs,
