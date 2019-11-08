@@ -35,6 +35,13 @@ function(add_custom_ie_build _inc _lib _lib_rel _lib_dbg _msg)
     IMPORTED_IMPLIB_DEBUG "${_lib_dbg}"
     INTERFACE_INCLUDE_DIRECTORIES "${_inc}"
   )
+
+  find_library(ie_builder_custom_lib "inference_engine_nn_builder" PATHS "${INF_ENGINE_LIB_DIRS}" NO_DEFAULT_PATH)
+  add_library(inference_engine_nn_builder UNKNOWN IMPORTED)
+  set_target_properties(inference_engine_nn_builder PROPERTIES
+    IMPORTED_LOCATION "${ie_builder_custom_lib}"
+  )
+
   if(NOT INF_ENGINE_RELEASE VERSION_GREATER "2018050000")
     find_library(INF_ENGINE_OMP_LIBRARY iomp5 PATHS "${INF_ENGINE_OMP_DIR}" NO_DEFAULT_PATH)
     if(NOT INF_ENGINE_OMP_LIBRARY)
@@ -44,7 +51,7 @@ function(add_custom_ie_build _inc _lib _lib_rel _lib_dbg _msg)
     endif()
   endif()
   set(INF_ENGINE_VERSION "Unknown" CACHE STRING "")
-  set(INF_ENGINE_TARGET inference_engine PARENT_SCOPE)
+  set(INF_ENGINE_TARGET inference_engine inference_engine_nn_builder PARENT_SCOPE)
   message(STATUS "Detected InferenceEngine: ${_msg}")
 endfunction()
 

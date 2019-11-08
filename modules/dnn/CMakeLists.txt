@@ -75,7 +75,16 @@ endif()
 set(include_dirs ${fw_inc})
 set(sources_options "")
 
-find_package(ngraph REQUIRED)
+# find_package(ngraph REQUIRED)
+
+find_path(ngraph_custom_inc "ngraph/ngraph.hpp" PATHS "${NGRAPH_INCLUDE_DIRS}" NO_DEFAULT_PATH)
+find_library(ngraph_custom_lib "ngraph" PATHS "${INF_ENGINE_LIB_DIRS}" NO_DEFAULT_PATH)
+add_library(ngraph::ngraph UNKNOWN IMPORTED)
+set_target_properties(ngraph::ngraph PROPERTIES
+  IMPORTED_LOCATION "${ngraph_custom_lib}"
+  INTERFACE_INCLUDE_DIRECTORIES "${ngraph_custom_inc}"
+)
+
 set(libs libprotobuf ${LAPACK_LIBRARIES})
 if(OPENCV_DNN_OPENCL AND HAVE_OPENCL)
   list(APPEND include_dirs ${OPENCL_INCLUDE_DIRS})
@@ -92,7 +101,7 @@ endif()
 ocv_glob_module_sources(${sources_options} SOURCES ${fw_srcs})
 ocv_create_module(${libs} ${INF_ENGINE_TARGET} ngraph::ngraph)
 ocv_add_samples()
-ocv_add_accuracy_tests(${INF_ENGINE_TARGET})
+ocv_add_accuracy_tests(${INF_ENGINE_TARGET} ngraph::ngraph)
 
 set(perf_path "${CMAKE_CURRENT_LIST_DIR}/perf")
 file(GLOB_RECURSE perf_srcs "${perf_path}/*.cpp")
