@@ -1679,6 +1679,9 @@ static void init_submodule(PyObject * root, const char * name, PyMethodDef * met
     {
         submod = PyImport_AddModule(full_name.c_str());
         PyDict_SetItemString(d, short_name.c_str(), submod);
+
+        if (full_name == "cv2.dnn.zoo")
+            initDnnZoo(submod);
     }
 
     if (short_name != "")
