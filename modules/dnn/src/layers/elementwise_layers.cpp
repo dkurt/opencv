@@ -808,7 +808,7 @@ struct AbsValFunctor
 #ifdef HAVE_INF_ENGINE
     std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node, int preferableTarget)
     {
-        float coeff = -0.999999f;
+        float coeff = preferableTarget == DNN_TARGET_MYRIAD ? -0.999f : -0.999999f;
         auto slope = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{1}, &coeff);
         if (preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD) {
             auto slope_ = std::make_shared<ngraph::op::Convert>(slope, ngraph::element::f16);
