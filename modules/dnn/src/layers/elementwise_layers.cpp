@@ -1023,13 +1023,13 @@ struct PowerFunctor
              auto shift_ = std::make_shared<ngraph::op::Convert>(shift_node, ngraph::element::f16);
              auto power_ = std::make_shared<ngraph::op::Convert>(power_node, ngraph::element::f16);
 
-             auto mul = std::make_shared<ngraph::op::Multiply>(scale_, node, ngraph::op::AutoBroadcastType::NUMPY);
-             auto scale_shift = std::make_shared<ngraph::op::Add>(mul, shift_, ngraph::op::AutoBroadcastType::NUMPY);
-             return std::make_shared<ngraph::op::Power>(scale_shift, power_, ngraph::op::AutoBroadcastType::NUMPY);
+             auto mul = std::make_shared<ngraph::op::v1::Multiply>(scale_, node, ngraph::op::AutoBroadcastType::NUMPY);
+             auto scale_shift = std::make_shared<ngraph::op::v1::Add>(mul, shift_, ngraph::op::AutoBroadcastType::NUMPY);
+             return std::make_shared<ngraph::op::v1::Power>(scale_shift, power_, ngraph::op::AutoBroadcastType::NUMPY);
          }
-        auto mul = std::make_shared<ngraph::op::Multiply>(scale_node, node, ngraph::op::AutoBroadcastType::NUMPY);
-        auto scale_shift = std::make_shared<ngraph::op::Add>(mul, shift_node, ngraph::op::AutoBroadcastType::NUMPY);
-        return std::make_shared<ngraph::op::Power>(scale_shift, power_node, ngraph::op::AutoBroadcastType::NUMPY);
+        auto mul = std::make_shared<ngraph::op::v1::Multiply>(scale_node, node, ngraph::op::AutoBroadcastType::NUMPY);
+        auto scale_shift = std::make_shared<ngraph::op::v1::Add>(mul, shift_node, ngraph::op::AutoBroadcastType::NUMPY);
+        return std::make_shared<ngraph::op::v1::Power>(scale_shift, power_node, ngraph::op::AutoBroadcastType::NUMPY);
     }
 #endif  // HAVE_INF_ENGINE
 

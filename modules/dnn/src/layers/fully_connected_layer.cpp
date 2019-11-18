@@ -484,7 +484,7 @@ public:
             if (isPrecisionFP16) {
                 bias_node = std::make_shared<ngraph::op::Convert>(bias_node, ngraph::element::f16);
             }
-            auto fc = std::make_shared<ngraph::op::Add>(matmul, bias_node, ngraph::op::AutoBroadcastType::NUMPY);
+            auto fc = std::make_shared<ngraph::op::v1::Add>(matmul, bias_node, ngraph::op::AutoBroadcastType::NUMPY);
             return Ptr<BackendNode>(new InfEngineNgraphNode(fc));
         }
         return Ptr<BackendNode>(new InfEngineNgraphNode(matmul));

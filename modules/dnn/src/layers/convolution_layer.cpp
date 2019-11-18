@@ -599,7 +599,7 @@ public:
             if (isPrecisionFP16) {
                 bias = std::make_shared<ngraph::op::Convert>(bias, ngraph::element::f16);
             }
-            auto conv_bias = std::make_shared<ngraph::op::Add>(conv_node, bias, ngraph::op::AutoBroadcastType::NUMPY);
+            auto conv_bias = std::make_shared<ngraph::op::v1::Add>(conv_node, bias, ngraph::op::AutoBroadcastType::NUMPY);
             return Ptr<BackendNode>(new InfEngineNgraphNode(conv_bias));
         }
         return Ptr<BackendNode>(new InfEngineNgraphNode(conv_node));

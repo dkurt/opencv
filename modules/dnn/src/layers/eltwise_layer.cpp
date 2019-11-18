@@ -533,9 +533,9 @@ public:
             auto coeff = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{1}, &coeffs[0]);
             if (isPrecisionFP16) {
                 auto coeff_fp16 = std::make_shared<ngraph::op::Convert>(coeff, ngraph::element::f16);
-                curr_node = std::make_shared<ngraph::op::Multiply>(curr_node, coeff_fp16, ngraph::op::AutoBroadcastType::NUMPY);
+                curr_node = std::make_shared<ngraph::op::v1::Multiply>(curr_node, coeff_fp16, ngraph::op::AutoBroadcastType::NUMPY);
             } else {
-                curr_node = std::make_shared<ngraph::op::Multiply>(curr_node, coeff, ngraph::op::AutoBroadcastType::NUMPY);
+                curr_node = std::make_shared<ngraph::op::v1::Multiply>(curr_node, coeff, ngraph::op::AutoBroadcastType::NUMPY);
             }
         }
 
@@ -546,15 +546,16 @@ public:
                 auto coeff = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{1}, &coeffs[i]);
                 if (isPrecisionFP16) {
                     auto coeff_fp16 = std::make_shared<ngraph::op::Convert>(coeff, ngraph::element::f16);
-                    next_node = std::make_shared<ngraph::op::Multiply>(next_node, coeff_fp16, ngraph::op::AutoBroadcastType::NUMPY);
+                    next_node = std::make_shared<ngraph::op::v1::Multiply>(next_node, coeff_fp16, ngraph::op::AutoBroadcastType::NUMPY);
                 } else {
-                    next_node = std::make_shared<ngraph::op::Multiply>(next_node, coeff, ngraph::op::AutoBroadcastType::NUMPY);
+                    next_node = std::make_shared<ngraph::op::v1::Multiply>(next_node, coeff, ngraph::op::AutoBroadcastType::NUMPY);
                 }
             }
             switch (op) {
-                case SUM:  curr_node = curr_node + next_node; break;
-                case PROD: curr_node = curr_node * next_node; break;
-                case MAX:  curr_node = std::make_shared<ngraph::op::Maximum>(curr_node, next_node); break;
+                case SUM:  curr_node = std::make_shared<ngraph::op::v1::Add>(curr_node, next_node); break;
+                case PROD: curr_node = std::make_shared<ngraph::op::v1::Multiply>(curr_node, next_node); break;
+                case DIV:  curr_node = std::make_shared<ngraph::op::v1::Divide>(curr_node, next_node); break;
+                case MAX:  curr_node = std::make_shared<ngraph::op::v1::Maximum>(curr_node, next_node); break;
                 default: CV_Error(Error::StsNotImplemented, "Unsupported eltwise operation");
             }
         }
