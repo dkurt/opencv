@@ -542,11 +542,9 @@ public:
         const int outCn = blobs[0].size[0];
         const int inpGroupCn = blobs[0].size[1];
         const int group = inpCn / inpGroupCn;
-        auto isPrecisionFP16 = preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD;
 
         std::vector<size_t> kernel_shape(&blobs[0].size[0], &blobs[0].size[0] + blobs[0].dims);
-
-        std::shared_ptr<ngraph::Node> ieWeights = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, kernel_shape, blobs[0].data);
+        auto ieWeights = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, kernel_shape, blobs[0].data);
         if (fusedWeights)
         {
             if (weightsMat.isContinuous())
@@ -560,9 +558,6 @@ public:
                 cvWeights.copyTo(newWeights);
                 ieWeights = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, kernel_shape, blobs[0].data);
             }
-        }
-        if (isPrecisionFP16) {
-            ieWeights = std::make_shared<ngraph::op::Convert>(ieWeights, ngraph::element::f16);
         }
 
         ngraph::op::PadType pad_type = ngraph::op::PadType::EXPLICIT;
@@ -594,11 +589,7 @@ public:
         {
             std::vector<size_t> shape(conv_node->get_shape().size(), 1);
             shape[1] = outCn;
-            std::shared_ptr<ngraph::Node> bias = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape(shape), biasvec.data());
-
-            if (isPrecisionFP16) {
-                bias = std::make_shared<ngraph::op::Convert>(bias, ngraph::element::f16);
-            }
+            auto bias = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape(shape), biasvec.data());
             auto conv_bias = std::make_shared<ngraph::op::v1::Add>(conv_node, bias, ngraph::op::AutoBroadcastType::NUMPY);
             return Ptr<BackendNode>(new InfEngineNgraphNode(conv_bias));
         }

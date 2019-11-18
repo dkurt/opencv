@@ -1926,7 +1926,7 @@ void initNgraphBackend()
                     curr_pos = cons + 1;
                 }
 
-                auto inps = net->setInputs(inputs, inputNames, preferableTarget);
+                auto inps = net->setInputs(inputs, inputNames);
                 for (auto& inp : inps) {
                     inputNodes.emplace_back(Ptr<BackendNode>(new InfEngineNgraphNode(inp)));
                 }

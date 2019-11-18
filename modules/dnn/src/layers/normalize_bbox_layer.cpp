@@ -316,7 +316,6 @@ public:
         auto& ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
         const size_t batch = ieInpNode->get_shape()[0];
         const size_t numChannels = ieInpNode->get_shape()[1];
-        auto isPrecisionFP16 = preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD;
 
         std::vector<int64_t> axes_data;
         if (!acrossSpatial) {
@@ -332,7 +331,7 @@ public:
         std::vector<size_t> shape(ieInpNode->get_shape().size(), 1);
         shape[0] = blobs.empty() ? 1 : batch;
         shape[1] = numChannels;
-        std::shared_ptr<ngraph::Node> weight;
+        std::shared_ptr<ngraph::op::Constant> weight;
         if (blobs.empty())
         {
             std::vector<float> ones(numChannels, 1);
@@ -343,9 +342,6 @@ public:
             // weight->get_shape().size() > 1 ~> channel_shared = false
             weight = std::make_shared<ngraph::op::Constant>(
                                       ngraph::element::f32, ngraph::Shape(shape), blobs[0].data);
-        }
-        if (isPrecisionFP16) {
-            weight = std::make_shared<ngraph::op::Convert>(weight, ngraph::element::f16);
         }
         auto mul = std::make_shared<ngraph::op::v1::Multiply>(norm, weight, ngraph::op::AutoBroadcastType::NUMPY);
         return Ptr<BackendNode>(new InfEngineNgraphNode(mul));

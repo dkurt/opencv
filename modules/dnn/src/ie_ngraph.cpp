@@ -168,6 +168,27 @@ void InfEngineNgraphNet::init(int targetId)
 {
     if (!hasNetOwner)
     {
+        if (targetId == DNN_TARGET_OPENCL_FP16 || targetId == DNN_TARGET_MYRIAD) {
+            auto nodes = ngraph_function->get_ordered_ops();
+            for (auto& node : nodes) {
+                auto parameter = std::dynamic_pointer_cast<ngraph::op::Parameter>(node);
+                if (parameter && parameter->get_element_type() == ngraph::element::f32) {
+                    parameter->set_element_type(ngraph::element::f16);
+                }
+                auto constant = std::dynamic_pointer_cast<ngraph::op::Constant>(node);
+                if (constant && constant->get_element_type() == ngraph::element::f32) {
+                    auto data = constant->get_vector<float>();
+                    std::vector<ngraph::float16> new_data(data.size());
+                    for (size_t i = 0; i < data.size(); ++i) {
+                        new_data[i] = ngraph::float16(data[i]);
+                    }
+                    auto new_const = std::make_shared<ngraph::op::Constant>(ngraph::element::f16, constant->get_shape(), new_data);
+                    new_const->set_friendly_name(constant->get_friendly_name());
+                    ngraph::replace_node(constant, new_const);
+                }
+            }
+        }
+        ngraph_function->validate_nodes_and_infer_types();
         cnn = InferenceEngine::CNNNetwork(ngraph_function);
         cnn.serialize("/tmp/cnn.xml", "/tmp/cnn.bin");
     }
@@ -233,16 +254,13 @@ void InfEngineNgraphNet::init(int targetId)
 }
 
 ngraph::ParameterVector InfEngineNgraphNet::setInputs(const std::vector<cv::Mat>& inputs,
-                                   const std::vector<std::string>& names, int target) {
+                                   const std::vector<std::string>& names) {
     CV_Assert_N(inputs.size() == names.size());
     ngraph::ParameterVector current_inp;
     for (size_t i = 0; i < inputs.size(); i++)
     {
         std::vector<size_t> shape(&inputs[i].size[0], &inputs[i].size[0] + inputs[i].dims);
-        auto type = target == DNN_TARGET_OPENCL_FP16 || target == DNN_TARGET_MYRIAD ?
-                    ngraph::element::f16 : ngraph::element::f32;
-
-        auto inp = std::make_shared<ngraph::op::Parameter>(type, ngraph::Shape(shape));
+        auto inp = std::make_shared<ngraph::op::Parameter>(ngraph::element::f32, ngraph::Shape(shape));
         inp->set_friendly_name(names[i]);
 
         auto it = std::find_if(inputs_vec.begin(), inputs_vec.end(),

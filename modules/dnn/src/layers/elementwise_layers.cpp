@@ -165,7 +165,7 @@ public:
     virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
         auto& ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
-        auto node = func.initNgraphAPI(ieInpNode, this->preferableTarget);
+        auto node = func.initNgraphAPI(ieInpNode);
         return Ptr<BackendNode>(new InfEngineNgraphNode(node));
     }
 #endif  // HAVE_INF_ENGINE
@@ -367,14 +367,10 @@ struct ReLUFunctor
 #endif  // HAVE_INF_ENGINE
 
 #ifdef HAVE_INF_ENGINE
-    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node, int preferableTarget)
+    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
     {
         if (slope) {
             auto param = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{1}, &slope);
-            if (preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD) {
-                auto slope_ = std::make_shared<ngraph::op::Convert>(param, ngraph::element::f16);
-                return std::make_shared<ngraph::op::PRelu>(node, slope_);
-            }
             return std::make_shared<ngraph::op::PRelu>(node, param);
         }
         return std::make_shared<ngraph::op::Relu>(node);
@@ -485,7 +481,7 @@ struct ReLU6Functor
 #endif  // HAVE_INF_ENGINE
 
 #ifdef HAVE_INF_ENGINE
-    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node, int preferableTarget)
+    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
     {
         return std::make_shared<ngraph::op::Clamp>(node, minValue, maxValue);
     }
@@ -564,7 +560,7 @@ struct TanHFunctor
 #endif  // HAVE_INF_ENGINE
 
 #ifdef HAVE_INF_ENGINE
-    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node, int preferableTarget)
+    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
     {
         return std::make_shared<ngraph::op::Tanh>(node);
     }
@@ -643,7 +639,7 @@ struct SigmoidFunctor
 #endif  // HAVE_INF_ENGINE
 
 #ifdef HAVE_INF_ENGINE
-    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node, int preferableTarget)
+    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
     {
         return std::make_shared<ngraph::op::Sigmoid>(node);
     }
@@ -724,7 +720,7 @@ struct ELUFunctor
 #endif  // HAVE_INF_ENGINE
 
 #ifdef HAVE_INF_ENGINE
-    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node, int preferableTarget)
+    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
     {
         return std::make_shared<ngraph::op::Elu>(node, 1.0);
     }
@@ -806,14 +802,11 @@ struct AbsValFunctor
 #endif  // HAVE_INF_ENGINE
 
 #ifdef HAVE_INF_ENGINE
-    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node, int preferableTarget)
+    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
     {
-        float coeff = preferableTarget == DNN_TARGET_MYRIAD ? -0.999f : -0.999999f;
+        float coeff = -0.999999f;
+        // float coeff = preferableTarget == DNN_TARGET_MYRIAD ? -0.999f : -0.999999f;
         auto slope = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{1}, &coeff);
-        if (preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD) {
-            auto slope_ = std::make_shared<ngraph::op::Convert>(slope, ngraph::element::f16);
-            return std::make_shared<ngraph::op::PRelu>(node, slope_);
-        }
         return std::make_shared<ngraph::op::PRelu>(node, slope);
     }
 #endif  // HAVE_INF_ENGINE
@@ -892,7 +885,7 @@ struct BNLLFunctor
 #endif  // HAVE_INF_ENGINE
 
 #ifdef HAVE_INF_ENGINE
-    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node, int preferableTarget)
+    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
     {
         CV_Error(Error::StsNotImplemented, "");
     }
@@ -1009,7 +1002,7 @@ struct PowerFunctor
 #endif  // HAVE_INF_ENGINE
 
 #ifdef HAVE_INF_ENGINE
-    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node, int preferableTarget)
+    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
     {
         auto scale_node = std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
                                                                  ngraph::Shape{1}, &scale);
@@ -1018,15 +1011,6 @@ struct PowerFunctor
         auto power_node = std::make_shared<ngraph::op::Constant>(ngraph::element::f32,
                                                                  ngraph::Shape{1}, &power);
 
-         if (preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD) {
-             auto scale_ = std::make_shared<ngraph::op::Convert>(scale_node, ngraph::element::f16);
-             auto shift_ = std::make_shared<ngraph::op::Convert>(shift_node, ngraph::element::f16);
-             auto power_ = std::make_shared<ngraph::op::Convert>(power_node, ngraph::element::f16);
-
-             auto mul = std::make_shared<ngraph::op::v1::Multiply>(scale_, node, ngraph::op::AutoBroadcastType::NUMPY);
-             auto scale_shift = std::make_shared<ngraph::op::v1::Add>(mul, shift_, ngraph::op::AutoBroadcastType::NUMPY);
-             return std::make_shared<ngraph::op::v1::Power>(scale_shift, power_, ngraph::op::AutoBroadcastType::NUMPY);
-         }
         auto mul = std::make_shared<ngraph::op::v1::Multiply>(scale_node, node, ngraph::op::AutoBroadcastType::NUMPY);
         auto scale_shift = std::make_shared<ngraph::op::v1::Add>(mul, shift_node, ngraph::op::AutoBroadcastType::NUMPY);
         return std::make_shared<ngraph::op::v1::Power>(scale_shift, power_node, ngraph::op::AutoBroadcastType::NUMPY);
@@ -1172,15 +1156,10 @@ struct ChannelsPReLUFunctor
 #endif  // HAVE_INF_ENGINE
 
 #ifdef HAVE_INF_ENGINE
-    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node, int preferableTarget)
+    std::shared_ptr<ngraph::Node> initNgraphAPI(const std::shared_ptr<ngraph::Node>& node)
     {
         const size_t numChannels = scale.total();
         auto slope = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, ngraph::Shape{numChannels}, scale.data);
-
-        if (preferableTarget == DNN_TARGET_OPENCL_FP16 || preferableTarget == DNN_TARGET_MYRIAD) {
-            auto slope_ = std::make_shared<ngraph::op::Convert>(slope, ngraph::element::f16);
-            return std::make_shared<ngraph::op::PRelu>(node, slope_);
-        }
         return std::make_shared<ngraph::op::PRelu>(node, slope);
     }
 #endif  // HAVE_INF_ENGINE
