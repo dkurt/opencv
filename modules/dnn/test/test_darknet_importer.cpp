@@ -331,7 +331,7 @@ TEST_P(Test_Darknet_nets, TinyYoloVoc)
 #ifdef HAVE_INF_ENGINE
 static const std::chrono::milliseconds async_timeout(10000);
 
-typedef testing::TestWithParam<tuple<std::string, Target> > Test_Darknet_nets_async;
+typedef testing::TestWithParam<tuple<std::string, tuple<Backend, Target> > > Test_Darknet_nets_async;
 TEST_P(Test_Darknet_nets_async, Accuracy)
 {
     if (INF_ENGINE_VER_MAJOR_LT(2019020000))
@@ -339,7 +339,12 @@ TEST_P(Test_Darknet_nets_async, Accuracy)
     applyTestTag(CV_TEST_TAG_MEMORY_512MB);
 
     std::string prefix = get<0>(GetParam());
-    int target = get<1>(GetParam());
+
+    Backend backendId = get<0>(get<1>(GetParam()));
+    Target targetId = get<1>(get<1>(GetParam()));
+
+    if (backendId != DNN_BACKEND_INFERENCE_ENGINE && backendId != DNN_BACKEND_NGRAPH)
+        throw SkipTestException("No support for async forward");
 
     const int numInputs = 2;
     std::vector<Mat> inputs(numInputs);
@@ -352,7 +357,8 @@ TEST_P(Test_Darknet_nets_async, Accuracy)
 
     Net netSync = readNet(findDataFile("dnn/" + prefix + ".cfg"),
                           findDataFile("dnn/" + prefix + ".weights", false));
-    netSync.setPreferableTarget(target);
+    netSync.setPreferableBackend(backendId);
+    netSync.setPreferableTarget(targetId);
 
     // Run synchronously.
     std::vector<Mat> refs(numInputs);
@@ -364,7 +370,8 @@ TEST_P(Test_Darknet_nets_async, Accuracy)
 
     Net netAsync = readNet(findDataFile("dnn/" + prefix + ".cfg"),
                            findDataFile("dnn/" + prefix + ".weights", false));
-    netAsync.setPreferableTarget(target);
+    netAsync.setPreferableBackend(backendId);
+    netAsync.setPreferableTarget(targetId);
 
     // Run asynchronously. To make test more robust, process inputs in the reversed order.
     for (int i = numInputs - 1; i >= 0; --i)
@@ -381,7 +388,7 @@ TEST_P(Test_Darknet_nets_async, Accuracy)
 
 INSTANTIATE_TEST_CASE_P(/**/, Test_Darknet_nets_async, Combine(
     Values("yolo-voc", "tiny-yolo-voc", "yolov3"),
-    ValuesIn(getAvailableTargets(DNN_BACKEND_INFERENCE_ENGINE))
+    dnnBackendsAndTargets()
 ));
 
 #endif

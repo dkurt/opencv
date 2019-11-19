@@ -8,68 +8,17 @@
 #ifndef __OPENCV_DNN_IE_NGRAPH_HPP__
 #define __OPENCV_DNN_IE_NGRAPH_HPP__
 
+#include "op_inf_engine.hpp"
 
-#include "opencv2/core/cvdef.h"
-#include "opencv2/core/cvstd.hpp"
-#include "opencv2/dnn.hpp"
+#ifdef HAVE_DNN_NGRAPH
 
-#include "opencv2/core/async.hpp"
-#include "opencv2/core/detail/async_promise.hpp"
-
-#include "opencv2/dnn/utils/inference_engine.hpp"
-
-#ifdef HAVE_INF_ENGINE
-
-#define INF_ENGINE_RELEASE_2018R5 2018050000
-#define INF_ENGINE_RELEASE_2019R1 2019010000
-#define INF_ENGINE_RELEASE_2019R2 2019020000
-
-#ifndef INF_ENGINE_RELEASE
-// #warning("IE version have not been provided via command-line. Using 2019R2 by default")
-#define INF_ENGINE_RELEASE INF_ENGINE_RELEASE_2019R2
-#endif
-
-#define INF_ENGINE_VER_MAJOR_GT(ver) (((INF_ENGINE_RELEASE) / 10000) > ((ver) / 10000))
-#define INF_ENGINE_VER_MAJOR_GE(ver) (((INF_ENGINE_RELEASE) / 10000) >= ((ver) / 10000))
-#define INF_ENGINE_VER_MAJOR_LT(ver) (((INF_ENGINE_RELEASE) / 10000) < ((ver) / 10000))
-#define INF_ENGINE_VER_MAJOR_LE(ver) (((INF_ENGINE_RELEASE) / 10000) <= ((ver) / 10000))
-#define INF_ENGINE_VER_MAJOR_EQ(ver) (((INF_ENGINE_RELEASE) / 10000) == ((ver) / 10000))
-
-#if defined(__GNUC__) && __GNUC__ >= 5
-//#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wsuggest-override"
-#endif
-
-//#define INFERENCE_ENGINE_DEPRECATED  // turn off deprecation warnings from IE
-//there is no way to suppress warnigns from IE only at this moment, so we are forced to suppress warnings globally
-#if defined(__GNUC__)
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-#ifdef _MSC_VER
-#pragma warning(disable: 4996)  // was declared deprecated
-#endif
-
-#if defined(__GNUC__)
-#pragma GCC visibility push(default)
-#endif
-
-#include <inference_engine.hpp>
 #include <ngraph/ngraph.hpp>
 
-
-#if defined(__GNUC__)
-#pragma GCC visibility pop
-#endif
-
-#if defined(__GNUC__) && __GNUC__ >= 5
-//#pragma GCC diagnostic pop
-#endif
-
-#endif  // HAVE_INF_ENGINE
+#endif  // HAVE_DNN_NGRAPH
 
 namespace cv { namespace dnn {
 
-#ifdef HAVE_INF_ENGINE
+#ifdef HAVE_DNN_NGRAPH
 
 class InfEngineNgraphNode;
 
@@ -83,7 +32,7 @@ public:
     void addOutput(const std::string& name);
 
     bool isInitialized();
-    void init(int targetId);
+    void init(Target targetId);
 
     void forward(const std::vector<Ptr<BackendWrapper> >& outBlobsWrappers, bool isAsync);
 
@@ -93,7 +42,7 @@ public:
     void setUnconnectedNodes(Ptr<InfEngineNgraphNode>& node);
     void addBlobs(const std::vector<cv::Ptr<BackendWrapper> >& ptrs);
 
-    void createNet(int targetId);
+    void createNet(Target targetId);
     void setNodePtr(std::shared_ptr<ngraph::Node>* ptr);
 private:
     void release();
@@ -184,11 +133,12 @@ private:
     InferenceEngine::CNNNetwork t_net;
 };
 
-#endif
+#endif  // HAVE_DNN_NGRAPH
 
 void forwardNgraph(const std::vector<Ptr<BackendWrapper> >& outBlobsWrappers,
                    Ptr<BackendNode>& node, bool isAsync);
-}}  // namespace dnn, namespace cv
+
+}}  // namespace cv::dnn
 
 
-#endif  // __OPENCV_DNN_OP_INF_ENGINE_HPP__
+#endif  // __OPENCV_DNN_IE_NGRAPH_HPP__

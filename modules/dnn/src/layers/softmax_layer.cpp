@@ -323,7 +323,7 @@ public:
     }
 #endif  // HAVE_INF_ENGINE
 
-#ifdef HAVE_INF_ENGINE
+#ifdef HAVE_DNN_NGRAPH
     virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs,
                                         const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
@@ -332,7 +332,7 @@ public:
         auto softmax = std::make_shared<ngraph::op::v1::Softmax>(ieInpNode, axis);
         return Ptr<BackendNode>(new InfEngineNgraphNode(softmax));
     }
-#endif  // HAVE_INF_ENGINE
+#endif  // HAVE_DNN_NGRAPH
 
     int64 getFLOPS(const std::vector<MatShape> &inputs,
                   const std::vector<MatShape> &outputs) const CV_OVERRIDE

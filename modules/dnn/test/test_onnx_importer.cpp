@@ -675,6 +675,9 @@ TEST_P(Test_ONNX_nets, Resnet34_kinetics)
     lp.set("order", DictValue::arrayInt<int*>(&order[0], 4));
     permute.addLayerToPrev("perm", "Permute", lp);
 
+    permute.setPreferableBackend(backend);
+    permute.setPreferableTarget(target);
+
     permute.setInput(blob0);
     Mat input0 = permute.forward().clone();
 

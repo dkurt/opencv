@@ -47,9 +47,9 @@
 #include "opencv2/core/async.hpp"
 
 #if !defined CV_DOXYGEN && !defined CV_STATIC_ANALYSIS && !defined CV_DNN_DONT_ADD_EXPERIMENTAL_NS
-#define CV__DNN_EXPERIMENTAL_NS_BEGIN namespace experimental_dnn_34_v14 {
+#define CV__DNN_EXPERIMENTAL_NS_BEGIN namespace experimental_dnn_34_v15 {
 #define CV__DNN_EXPERIMENTAL_NS_END }
-namespace cv { namespace dnn { namespace experimental_dnn_34_v14 { } using namespace experimental_dnn_34_v14; }}
+namespace cv { namespace dnn { namespace experimental_dnn_34_v15 { } using namespace experimental_dnn_34_v15; }}
 #else
 #define CV__DNN_EXPERIMENTAL_NS_BEGIN
 #define CV__DNN_EXPERIMENTAL_NS_END
@@ -74,11 +74,17 @@ CV__DNN_EXPERIMENTAL_NS_BEGIN
         //! DNN_BACKEND_DEFAULT equals to DNN_BACKEND_INFERENCE_ENGINE if
         //! OpenCV is built with Intel's Inference Engine library or
         //! DNN_BACKEND_OPENCV otherwise.
-        DNN_BACKEND_DEFAULT,
+        DNN_BACKEND_DEFAULT = 0,
         DNN_BACKEND_HALIDE,
-        DNN_BACKEND_INFERENCE_ENGINE,  //!< Intel's Inference Engine computational backend.
-        DNN_BACKEND_NGRAPH,
-        DNN_BACKEND_OPENCV
+        DNN_BACKEND_INFERENCE_ENGINE,            //!< Default Intel's Inference Engine computational backend
+                                                 //!< @sa DNN_BACKEND_NGRAPH, DNN_BACKEND_INFERENCE_ENGINE_2019
+        DNN_BACKEND_OPENCV,
+        // OpenCV 4.x: DNN_BACKEND_VKCOM,
+        // OpenCV 4.x: DNN_BACKEND_CUDA,
+// TODO rename DNN_BACKEND_INFERENCE_ENGINE_NGRAPH
+        DNN_BACKEND_NGRAPH = 6,                  //!< (preview) nGraph-powered Intel's Inference Engine computational backend
+// TODO rename usage of DNN_BACKEND_INFERENCE_ENGINE
+        // DNN_BACKEND_INFERENCE_ENGINE_2019     //!< (placeholder) Deprecated Intel's Inference Engine computational backend (NN Builder API)
     };
 
     /**
@@ -530,6 +536,7 @@ CV__DNN_EXPERIMENTAL_NS_BEGIN
          * | DNN_TARGET_MYRIAD      |                    |                            + |                    |
          * | DNN_TARGET_FPGA        |                    |                            + |                    |
          */
+        // TODO: update docs
         CV_WRAP void setPreferableTarget(int targetId);
 
         /** @brief Sets the new input value for the network

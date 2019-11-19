@@ -86,7 +86,8 @@ bool validateVPUType();
 testing::internal::ParamGenerator< tuple<Backend, Target> > dnnBackendsAndTargets(
         bool withInferenceEngine = true,
         bool withHalide = false,
-        bool withCpuOCV = true
+        bool withCpuOCV = true,
+        bool withNgraph = true
 );
 
 

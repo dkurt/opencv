@@ -312,7 +312,7 @@ public:
 #endif  // HAVE_INF_ENGINE
 
 
-#ifdef HAVE_INF_ENGINE
+#ifdef HAVE_DNN_NGRAPH
     virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs,
                                         const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
@@ -326,7 +326,7 @@ public:
         auto concat = std::make_shared<ngraph::op::Concat>(inp_nodes, clamp(axis, data->getDims().size()));
         return Ptr<BackendNode>(new InfEngineNgraphNode(concat));
     }
-#endif  // HAVE_INF_ENGINE
+#endif  // HAVE_DNN_NGRAPH
 };
 
 Ptr<ConcatLayer> ConcatLayer::create(const LayerParams& params)

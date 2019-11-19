@@ -88,7 +88,7 @@ public:
 
     bool isInitialized();
 
-    void init(int targetId);
+    void init(Target targetId);
 
     void forward(const std::vector<Ptr<BackendWrapper> >& outBlobsWrappers,
                  bool isAsync);
@@ -210,11 +210,33 @@ private:
     InferenceEngine::CNNNetwork t_net;
 };
 
+class InfEngineExtension : public InferenceEngine::IExtension
+{
+public:
+    virtual void SetLogCallback(InferenceEngine::IErrorListener&) noexcept {}
+    virtual void Unload() noexcept {}
+    virtual void Release() noexcept {}
+    virtual void GetVersion(const InferenceEngine::Version*&) const noexcept {}
+
+    virtual InferenceEngine::StatusCode getPrimitiveTypes(char**&, unsigned int&,
+                                                          InferenceEngine::ResponseDesc*) noexcept
+    {
+        return InferenceEngine::StatusCode::OK;
+    }
+
+    InferenceEngine::StatusCode getFactoryFor(InferenceEngine::ILayerImplFactory*& factory,
+                                              const InferenceEngine::CNNLayer* cnnLayer,
+                                              InferenceEngine::ResponseDesc* resp) noexcept;
+};
+
+
 CV__DNN_EXPERIMENTAL_NS_BEGIN
 
 bool isMyriadX();
 
 CV__DNN_EXPERIMENTAL_NS_END
+
+InferenceEngine::Core& getCore();
 
 #endif  // HAVE_INF_ENGINE
 

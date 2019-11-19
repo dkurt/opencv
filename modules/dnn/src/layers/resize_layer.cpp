@@ -9,8 +9,10 @@
 #include "../op_inf_engine.hpp"
 #include <opencv2/imgproc.hpp>
 
+#ifdef HAVE_DNN_NGRAPH
 #include "../ie_ngraph.hpp"
 #include <ngraph/op/experimental/layers/interpolate.hpp>
+#endif
 
 namespace cv { namespace dnn {
 
@@ -199,7 +201,7 @@ public:
     }
 
 
-#ifdef HAVE_INF_ENGINE
+#ifdef HAVE_DNN_NGRAPH
     virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs,
                                         const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
@@ -225,7 +227,7 @@ public:
         auto interp = std::make_shared<ngraph::op::Interpolate>(ieInpNode, out_shape, attrs);
         return Ptr<BackendNode>(new InfEngineNgraphNode(interp));
     }
-#endif  // HAVE_INF_ENGINE
+#endif  // HAVE_DNN_NGRAPH
 
 protected:
     int outWidth, outHeight, zoomFactorWidth, zoomFactorHeight;

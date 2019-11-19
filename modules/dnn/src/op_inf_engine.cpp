@@ -161,30 +161,17 @@ private:
     InferenceEngine::CNNLayer cnnLayer;
 };
 
-class InfEngineExtension : public InferenceEngine::IExtension
+InferenceEngine::StatusCode InfEngineExtension::getFactoryFor(
+        InferenceEngine::ILayerImplFactory*& factory,
+        const InferenceEngine::CNNLayer* cnnLayer,
+        InferenceEngine::ResponseDesc* resp
+) noexcept
 {
-public:
-    virtual void SetLogCallback(InferenceEngine::IErrorListener&) noexcept {}
-    virtual void Unload() noexcept {}
-    virtual void Release() noexcept {}
-    virtual void GetVersion(const InferenceEngine::Version*&) const noexcept {}
-
-    virtual InferenceEngine::StatusCode getPrimitiveTypes(char**&, unsigned int&,
-                                                          InferenceEngine::ResponseDesc*) noexcept
-    {
-        return InferenceEngine::StatusCode::OK;
-    }
-
-    InferenceEngine::StatusCode getFactoryFor(InferenceEngine::ILayerImplFactory*& factory,
-                                              const InferenceEngine::CNNLayer* cnnLayer,
-                                              InferenceEngine::ResponseDesc* resp) noexcept
-    {
-        if (cnnLayer->type != kOpenCVLayersType)
-            return InferenceEngine::StatusCode::NOT_IMPLEMENTED;
-        factory = new InfEngineCustomLayerFactory(cnnLayer);
-        return InferenceEngine::StatusCode::OK;
-    }
-};
+    if (cnnLayer->type != kOpenCVLayersType)
+        return InferenceEngine::StatusCode::NOT_IMPLEMENTED;
+    factory = new InfEngineCustomLayerFactory(cnnLayer);
+    return InferenceEngine::StatusCode::OK;
+}
 
 InfEngineBackendNode::InfEngineBackendNode(const InferenceEngine::Builder::Layer& _layer)
     : BackendNode(DNN_BACKEND_INFERENCE_ENGINE), layer(_layer) {}
@@ -269,7 +256,7 @@ void InfEngineBackendNet::connect(const std::vector<Ptr<BackendWrapper> >& input
 #endif
 }
 
-void InfEngineBackendNet::init(int targetId)
+void InfEngineBackendNet::init(Target targetId)
 {
     if (!hasNetOwner)
     {
@@ -505,7 +492,7 @@ static std::map<std::string, InferenceEngine::InferenceEnginePluginPtr>& getShar
     return sharedPlugins;
 }
 #else
-static InferenceEngine::Core& getCore()
+InferenceEngine::Core& getCore()
 {
     static InferenceEngine::Core core;
     return core;
@@ -603,7 +590,65 @@ void InfEngineBackendNet::initPlugin(InferenceEngine::CNNNetwork& net)
 #else
             isInit = true;
 #endif
+            std::vector<std::string> candidates;
+            std::string param_pluginPath = utils::getConfigurationParameterString("OPENCV_DNN_IE_EXTRA_PLUGIN_PATH", "");
+            if (!param_pluginPath.empty())
+            {
+                candidates.push_back(param_pluginPath);
+            }
+#if INF_ENGINE_VER_MAJOR_LE(INF_ENGINE_RELEASE_2019R3)
+            if (device_name == "CPU" || device_name == "FPGA")
+            {
+                std::string suffixes[] = {"_avx2", "_sse4", ""};
+                bool haveFeature[] = {
+                    checkHardwareSupport(CPU_AVX2),
+                    checkHardwareSupport(CPU_SSE4_2),
+                    true
+                };
+                for (int i = 0; i < 3; ++i)
+                {
+                    if (!haveFeature[i])
+                        continue;
+#ifdef _WIN32
+                    candidates.push_back("cpu_extension" + suffixes[i] + ".dll");
+#elif defined(__APPLE__)
+                    candidates.push_back("libcpu_extension" + suffixes[i] + ".so");  // built as loadable module
+                    candidates.push_back("libcpu_extension" + suffixes[i] + ".dylib");  // built as shared library
+#else
+                    candidates.push_back("libcpu_extension" + suffixes[i] + ".so");
+#endif  // _WIN32
+                }
+            }
+#endif
+            bool found = false;
+            for (size_t i = 0; i != candidates.size(); ++i)
+            {
+                const std::string& libName = candidates[i];
+                try
+                {
+                    InferenceEngine::IExtensionPtr extension =
+                        InferenceEngine::make_so_pointer<InferenceEngine::IExtension>(libName);
 
+#if INF_ENGINE_VER_MAJOR_LE(INF_ENGINE_RELEASE_2019R1)
+                    enginePtr->AddExtension(extension, 0);
+#else
+                    ie.AddExtension(extension, "CPU");
+#endif
+                    CV_LOG_INFO(NULL, "DNN-IE: Loaded extension plugin: " << libName);
+                    found = true;
+                    break;
+                }
+                catch(...) {}
+            }
+            if (!found && !candidates.empty())
+            {
+                CV_LOG_WARNING(NULL, "DNN-IE: Can't load extension plugin (extra layers for some networks). Specify path via OPENCV_DNN_IE_EXTRA_PLUGIN_PATH parameter");
+            }
+            // Some of networks can work without a library of extra layers.
+#if INF_ENGINE_VER_MAJOR_GT(INF_ENGINE_RELEASE_2019R1)
+            // OpenCV fallbacks as extensions.
+            ie.AddExtension(std::make_shared<InfEngineExtension>(), "CPU");
+#endif
 #ifndef _WIN32
             // Limit the number of CPU threads.
 #if INF_ENGINE_VER_MAJOR_LE(INF_ENGINE_RELEASE_2019R1)
@@ -614,7 +659,7 @@ void InfEngineBackendNet::initPlugin(InferenceEngine::CNNNetwork& net)
             if (device_name == "CPU")
                 ie.SetConfig({{
                     InferenceEngine::PluginConfigParams::KEY_CPU_THREADS_NUM, format("%d", getNumThreads()),
-                }}, "CPU");
+                }}, device_name);
 #endif
 #endif
         }
@@ -645,7 +690,7 @@ void InfEngineBackendNet::initPlugin(InferenceEngine::CNNNetwork& net)
     }
     catch (const std::exception& ex)
     {
-        CV_Error(Error::StsAssert, format("Failed to initialize Inference Engine backend: %s", ex.what()));
+        CV_Error(Error::StsError, format("Failed to initialize Inference Engine backend (device = %s): %s", device_name.c_str(), ex.what()));
     }
 }
 

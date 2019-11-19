@@ -178,7 +178,7 @@ public:
     }
 #endif  // HAVE_INF_ENGINE
 
-#ifdef HAVE_INF_ENGINE
+#ifdef HAVE_DNN_NGRAPH
 virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs,
                                     const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
 {
@@ -203,7 +203,7 @@ virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inp
         auto reshape = std::make_shared<ngraph::op::v1::Reshape>(ieInpNode, shape, true);
         return Ptr<BackendNode>(new InfEngineNgraphNode(reshape));
     }
-#endif  // HAVE_INF_ENGINE
+#endif  // HAVE_DNN_NGRAPH
   // HAVE_INF_ENGINE
 
     int _startAxis;

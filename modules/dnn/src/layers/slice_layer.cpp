@@ -319,7 +319,7 @@ public:
 #endif
 #endif
 
-#ifdef HAVE_INF_ENGINE
+#ifdef HAVE_DNN_NGRAPH
     virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs,
                                         const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
@@ -345,7 +345,7 @@ public:
                                                             strides, ngraph::AxisSet{}, ngraph::AxisSet{});
         return Ptr<BackendNode>(new InfEngineNgraphNode(slice));
     }
-#endif  // HAVE_INF_ENGINE
+#endif  // HAVE_DNN_NGRAPH
 
 };
 

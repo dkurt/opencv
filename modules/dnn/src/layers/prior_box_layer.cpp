@@ -43,9 +43,12 @@
 #include "../precomp.hpp"
 #include "layers_common.hpp"
 #include "../op_inf_engine.hpp"
+
+#ifdef HAVE_DNN_NGRAPH
 #include "../ie_ngraph.hpp"
 #include <ngraph/op/experimental/layers/prior_box.hpp>
 #include <ngraph/op/experimental/layers/prior_box_clustered.hpp>
+#endif
 
 #include <float.h>
 #include <algorithm>
@@ -549,7 +552,7 @@ public:
     }
 #endif  // HAVE_INF_ENGINE
 
-#ifdef HAVE_INF_ENGINE
+#ifdef HAVE_DNN_NGRAPH
     virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
         CV_Assert(nodes.size() == 2);
@@ -602,7 +605,7 @@ public:
             return Ptr<BackendNode>(new InfEngineNgraphNode(priorBox));
         }
     }
-#endif  // HAVE_INF_ENGINE
+#endif  // HAVE_DNN_NGRAPH
 
 
     virtual int64 getFLOPS(const std::vector<MatShape> &inputs,

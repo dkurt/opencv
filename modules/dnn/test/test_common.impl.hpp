@@ -181,7 +181,8 @@ void readFileContent(const std::string& filename, CV_OUT std::vector<char>& cont
 testing::internal::ParamGenerator< tuple<Backend, Target> > dnnBackendsAndTargets(
         bool withInferenceEngine /*= true*/,
         bool withHalide /*= false*/,
-        bool withCpuOCV /*= true*/
+        bool withCpuOCV /*= true*/,
+        bool withNgraph /*= true*/
 )
 {
 #ifdef HAVE_INF_ENGINE
@@ -206,7 +207,9 @@ testing::internal::ParamGenerator< tuple<Backend, Target> > dnnBackendsAndTarget
                 continue;
             targets.push_back(make_tuple(DNN_BACKEND_INFERENCE_ENGINE, *i));
         }
-
+    }
+    if (withNgraph)
+    {
         available = getAvailableTargets(DNN_BACKEND_NGRAPH);
         for (std::vector< Target >::const_iterator i = available.begin(); i != available.end(); ++i)
         {

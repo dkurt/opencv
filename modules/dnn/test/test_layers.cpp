@@ -555,17 +555,22 @@ TEST_F(Layer_RNN_Test, get_set_test)
     EXPECT_EQ(shape(outputs[1]), shape(nT, nS, nH));
 }
 
-TEST(Layer_Test_ROIPooling, Accuracy)
+TEST_P(Test_Caffe_layers, ROIPooling_Accuracy)
 {
     Net net = readNetFromCaffe(_tf("net_roi_pooling.prototxt"));
+    ASSERT_FALSE(net.empty());
 
     Mat inp = blobFromNPY(_tf("net_roi_pooling.input.npy"));
     Mat rois = blobFromNPY(_tf("net_roi_pooling.rois.npy"));
     Mat ref = blobFromNPY(_tf("net_roi_pooling.npy"));
 
+    checkBackend(&inp, &ref);
+
+    net.setPreferableBackend(backend);
+    net.setPreferableTarget(target);
+
     net.setInput(inp, "input");
     net.setInput(rois, "rois");
-    net.setPreferableBackend(DNN_BACKEND_NGRAPH);
 
     Mat out = net.forward();
 
@@ -1120,13 +1125,14 @@ INSTANTIATE_TEST_CASE_P(/*nothing*/, Test_DLDT_two_inputs_3dim, Combine(
   testing::ValuesIn(list_sizes)
 ));
 
-typedef testing::TestWithParam<tuple<int, int, Target> > Test_DLDT_two_inputs;
+typedef testing::TestWithParam<tuple<int, int, tuple<Backend, Target> > > Test_DLDT_two_inputs;
 TEST_P(Test_DLDT_two_inputs, as_backend)
 {
     static const float kScale = 0.5f;
     static const float kScaleInv = 1.0f / kScale;
 
-    Target targetId = get<2>(GetParam());
+    Backend backendId = get<0>(get<2>(GetParam()));
+    Target targetId = get<1>(get<2>(GetParam()));
 
     Net net;
     LayerParams lp;
@@ -1145,7 +1151,7 @@ TEST_P(Test_DLDT_two_inputs, as_backend)
     net.setInputsNames({"data", "second_input"});
     net.setInput(firstInp, "data", kScale);
     net.setInput(secondInp, "second_input", kScaleInv);
-    net.setPreferableBackend(DNN_BACKEND_INFERENCE_ENGINE);
+    net.setPreferableBackend(backendId);
     net.setPreferableTarget(targetId);
     Mat out = net.forward();
 
@@ -1159,7 +1165,7 @@ TEST_P(Test_DLDT_two_inputs, as_backend)
 
 INSTANTIATE_TEST_CASE_P(/*nothing*/, Test_DLDT_two_inputs, Combine(
   Values(CV_8U, CV_32F), Values(CV_8U, CV_32F),
-  testing::ValuesIn(getAvailableTargets(DNN_BACKEND_INFERENCE_ENGINE))
+  dnnBackendsAndTargets()
 ));
 
 class UnsupportedLayer : public Layer
@@ -1180,10 +1186,11 @@ public:
     virtual void forward(cv::InputArrayOfArrays inputs, cv::OutputArrayOfArrays outputs, cv::OutputArrayOfArrays internals) CV_OVERRIDE {}
 };
 
-TEST(Test_DLDT, fused_output)
+typedef DNNTestLayer Test_DLDT_layers;
+
+static void test_dldt_fused_output(Backend backend, Target target)
 {
     static const int kNumChannels = 3;
-    CV_DNN_REGISTER_LAYER_CLASS(Unsupported, UnsupportedLayer);
     Net net;
     {
         LayerParams lp;
@@ -1207,13 +1214,31 @@ TEST(Test_DLDT, fused_output)
         LayerParams lp;
         net.addLayerToPrev("unsupported_layer", "Unsupported", lp);
     }
-    net.setPreferableBackend(DNN_BACKEND_NGRAPH);
+    net.setPreferableBackend(backend);
+    net.setPreferableTarget(target);
     net.setInput(Mat({1, 1, 1, 1}, CV_32FC1, Scalar(1)));
-    ASSERT_NO_THROW(net.forward());
+    net.forward();
+}
+
+TEST_P(Test_DLDT_layers, fused_output)
+{
+    CV_DNN_REGISTER_LAYER_CLASS(Unsupported, UnsupportedLayer);
+    try
+    {
+        test_dldt_fused_output(backend, target);
+    }
+    catch (const std::exception& e)
+    {
+        ADD_FAILURE() << "Exception: " << e.what();
+    }
+    catch(...)
+    {
+        ADD_FAILURE() << "Unknown exception";
+    }
     LayerFactory::unregisterLayer("Unsupported");
 }
 
-TEST(Test_DLDT, multiple_networks)
+TEST_P(Test_DLDT_layers, multiple_networks)
 {
     Net nets[2];
     for (int i = 0; i < 2; ++i)
@@ -1228,7 +1253,8 @@ TEST(Test_DLDT, multiple_networks)
         lp.name = format("testConv_%d", i);
         lp.blobs.push_back(Mat({1, 1, 1, 1}, CV_32F, Scalar(1 + i)));
         nets[i].addLayerToPrev(lp.name, lp.type, lp);
-        nets[i].setPreferableBackend(DNN_BACKEND_INFERENCE_ENGINE);
+        nets[i].setPreferableBackend(backend);
+        nets[i].setPreferableTarget(target);
         nets[i].setInput(Mat({1, 1, 1, 1}, CV_32FC1, Scalar(1)));
     }
     Mat out_1 = nets[0].forward();
@@ -1237,6 +1263,9 @@ TEST(Test_DLDT, multiple_networks)
     out_1 = nets[0].forward();
     normAssert(2 * out_1, out_2);
 }
+
+INSTANTIATE_TEST_CASE_P(/*nothing*/, Test_DLDT_layers, dnnBackendsAndTargets());
+
 #endif  // HAVE_INF_ENGINE
 
 // Test a custom layer.

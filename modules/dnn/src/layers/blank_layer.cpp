@@ -134,7 +134,7 @@ public:
 #endif  // HAVE_INF_ENGINE
 
 
-#ifdef HAVE_INF_ENGINE
+#ifdef HAVE_DNN_NGRAPH
     virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs,
                                         const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
@@ -143,7 +143,7 @@ public:
         auto blank = std::make_shared<ngraph::op::Concat>(inp, 0);
         return Ptr<BackendNode>(new InfEngineNgraphNode(blank));
     }
-#endif  // HAVE_INF_ENGINE
+#endif  // HAVE_DNN_NGRAPH
 };
 
 Ptr<Layer> BlankLayer::create(const LayerParams& params)

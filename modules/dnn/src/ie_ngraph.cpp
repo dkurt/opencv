@@ -10,17 +10,17 @@
 
 #include <opencv2/dnn/shape_utils.hpp>
 
-#ifdef HAVE_INF_ENGINE
+#ifdef HAVE_DNN_NGRAPH
 #include <ie_extension.h>
 #include <ie_plugin_dispatcher.hpp>
-#endif  // HAVE_INF_ENGINE
+#endif  // HAVE_DNN_NGRAPH
 
 #include <opencv2/core/utils/configuration.private.hpp>
 #include <opencv2/core/utils/logger.hpp>
 
 namespace cv { namespace dnn {
 
-#ifdef HAVE_INF_ENGINE
+#ifdef HAVE_DNN_NGRAPH
 
 // For networks with input layer which has an empty name, IE generates a name id[some_number].
 // OpenCV lets users use an empty input name and to prevent unexpected naming,
@@ -43,8 +43,8 @@ ngraphWrappers(const std::vector<Ptr<BackendWrapper> >& ptrs)
 InfEngineNgraphNode::InfEngineNgraphNode(std::shared_ptr<ngraph::Node>&& _node)
     : BackendNode(DNN_BACKEND_NGRAPH), node(std::move(_node)) {}
 
-    InfEngineNgraphNode::InfEngineNgraphNode(std::shared_ptr<ngraph::Node>& _node)
-        : BackendNode(DNN_BACKEND_NGRAPH), node(_node) {}
+InfEngineNgraphNode::InfEngineNgraphNode(std::shared_ptr<ngraph::Node>& _node)
+    : BackendNode(DNN_BACKEND_NGRAPH), node(_node) {}
 
 void InfEngineNgraphNode::setName(const std::string& name) {
     node->set_friendly_name(name);
@@ -121,7 +121,7 @@ int InfEngineNgraphNet::getNumComponents() {
     return components.size();
 }
 
-void InfEngineNgraphNet::createNet(int targetId) {
+void InfEngineNgraphNet::createNet(Target targetId) {
     if (!hasNetOwner)
     {
         CV_Assert(!unconnectedNodes.empty());
@@ -164,7 +164,7 @@ void InfEngineNgraphNet::createNet(int targetId) {
     }
 }
 
-void InfEngineNgraphNet::init(int targetId)
+void InfEngineNgraphNet::init(Target targetId)
 {
     if (!hasNetOwner)
     {
@@ -190,7 +190,9 @@ void InfEngineNgraphNet::init(int targetId)
         }
         ngraph_function->validate_nodes_and_infer_types();
         cnn = InferenceEngine::CNNNetwork(ngraph_function);
-        cnn.serialize("/tmp/cnn.xml", "/tmp/cnn.bin");
+#ifdef _DEBUG  // TODO
+        //cnn.serialize("/tmp/cnn.xml", "/tmp/cnn.bin");
+#endif
     }
 
     switch (targetId)
@@ -281,114 +283,59 @@ void InfEngineNgraphNet::setUnconnectedNodes(Ptr<InfEngineNgraphNode>& node) {
     unconnectedNodes.insert(node->node);
 }
 
-static InferenceEngine::Core& getCore()
-{
-    static InferenceEngine::Core core;
-    return core;
-}
-
-#if !defined(OPENCV_DNN_IE_VPU_TYPE_DEFAULT)
-static bool detectMyriadX_()
-{
-    auto input = std::make_shared<ngraph::op::Parameter>(ngraph::element::f16, ngraph::Shape({1}));
-    auto relu = std::make_shared<ngraph::op::Relu>(input);
-    auto ngraph_function = std::make_shared<ngraph::Function>(relu, ngraph::ParameterVector{input});
-
-    InferenceEngine::CNNNetwork cnn = InferenceEngine::CNNNetwork(ngraph_function);
-    try
-    {
-        auto netExec = getCore().LoadNetwork(cnn, "MYRIAD", {{"VPU_PLATFORM", "VPU_2480"}});
-        auto infRequest = netExec.CreateInferRequest();
-    } catch(...) {
-        return false;
-    }
-    return true;
-}
-#endif  // !defined(OPENCV_DNN_IE_VPU_TYPE_DEFAULT)
-
-
-#ifdef HAVE_INF_ENGINE
-bool isMyriadX()
-{
-     static bool myriadX = getInferenceEngineVPUType() == CV_DNN_INFERENCE_ENGINE_VPU_TYPE_MYRIAD_X;
-     return myriadX;
-}
-
-static std::string getInferenceEngineVPUType_()
-{
-    static std::string param_vpu_type = utils::getConfigurationParameterString("OPENCV_DNN_IE_VPU_TYPE", "");
-    if (param_vpu_type == "")
-    {
-#if defined(OPENCV_DNN_IE_VPU_TYPE_DEFAULT)
-        param_vpu_type = OPENCV_DNN_IE_VPU_TYPE_DEFAULT;
-#else
-        CV_LOG_INFO(NULL, "OpenCV-DNN: running Inference Engine VPU autodetection: Myriad2/X. In case of other accelerator types specify 'OPENCV_DNN_IE_VPU_TYPE' parameter");
-        try {
-            bool isMyriadX_ = detectMyriadX_();
-            if (isMyriadX_)
-            {
-                param_vpu_type = CV_DNN_INFERENCE_ENGINE_VPU_TYPE_MYRIAD_X;
-            }
-            else
-            {
-                param_vpu_type = CV_DNN_INFERENCE_ENGINE_VPU_TYPE_MYRIAD_2;
-            }
-        }
-        catch (...)
-        {
-            CV_LOG_WARNING(NULL, "OpenCV-DNN: Failed Inference Engine VPU autodetection. Specify 'OPENCV_DNN_IE_VPU_TYPE' parameter.");
-            param_vpu_type.clear();
-        }
-#endif
-    }
-    CV_LOG_INFO(NULL, "OpenCV-DNN: Inference Engine VPU type='" << param_vpu_type << "'");
-    return param_vpu_type;
-}
-
-cv::String getInferenceEngineVPUType()
-{
-    static cv::String vpu_type = getInferenceEngineVPUType_();
-    return vpu_type;
-}
-#else  // HAVE_INF_ENGINE
-cv::String getInferenceEngineVPUType()
-{
-    CV_Error(Error::StsNotImplemented, "This OpenCV build doesn't include InferenceEngine support");
-}
-#endif  // HAVE_INF_ENGINE
-
-void resetMyriadDevice()
-{
-#ifdef HAVE_INF_ENGINE
-    AutoLock lock(getInitializationMutex());
-    getCore().UnregisterPlugin("MYRIAD");
-#endif  // HAVE_INF_ENGINE
-}
-
 void InfEngineNgraphNet::initPlugin(InferenceEngine::CNNNetwork& net)
 {
-    CV_Assert(!isInitialized());  // some nets
-    // net.serialize("/tmp/icnn.xml", "/tmp/icnn.bin");
+    CV_Assert(!isInitialized());  // some nets  // TODO clarify comment
+    // TODO net.serialize("/tmp/icnn.xml", "/tmp/icnn.bin");
 
     try
     {
         AutoLock lock(getInitializationMutex());
+        InferenceEngine::Core& ie = getCore();
         {
             isInit = true;
+            std::vector<std::string> candidates;
+            std::string param_pluginPath = utils::getConfigurationParameterString("OPENCV_DNN_IE_EXTRA_PLUGIN_PATH", "");
+            if (!param_pluginPath.empty())
+            {
+                candidates.push_back(param_pluginPath);
+            }
+            bool found = false;
+            for (size_t i = 0; i != candidates.size(); ++i)
+            {
+                const std::string& libName = candidates[i];
+                try
+                {
+                    InferenceEngine::IExtensionPtr extension =
+                        InferenceEngine::make_so_pointer<InferenceEngine::IExtension>(libName);
+
+                    ie.AddExtension(extension, "CPU");
+                    CV_LOG_INFO(NULL, "DNN-IE: Loaded extension plugin: " << libName);
+                    found = true;
+                    break;
+                }
+                catch(...) {}
+            }
+            if (!found && !candidates.empty())
+            {
+                CV_LOG_WARNING(NULL, "DNN-IE: Can't load extension plugin (extra layers for some networks). Specify path via OPENCV_DNN_IE_EXTRA_PLUGIN_PATH parameter");
+            }
             // Some of networks can work without a library of extra layers.
+            // OpenCV fallbacks as extensions.
+            ie.AddExtension(std::make_shared<InfEngineExtension>(), "CPU");
 #ifndef _WIN32
             // Limit the number of CPU threads.
             if (device_name == "CPU")
-                getCore().SetConfig({{
+                ie.SetConfig({{
                     InferenceEngine::PluginConfigParams::KEY_CPU_THREADS_NUM, format("%d", getNumThreads()),
-                }}, "CPU");
+                }}, device_name);
 #endif
         }
-        netExec = getCore().LoadNetwork(net, device_name);
+        netExec = ie.LoadNetwork(net, device_name);
     }
     catch (const std::exception& ex)
     {
-        CV_Error(Error::StsAssert, format("Failed to initialize Inference Engine backend: %s", ex.what()));
+        CV_Error(Error::StsError, format("Failed to initialize Inference Engine backend (device = %s): %s", device_name.c_str(), ex.what()));
     }
 }
 
@@ -550,12 +497,10 @@ InferenceEngine::DataPtr ngraphDataNode(const Ptr<BackendWrapper>& ptr)
 void forwardNgraph(const std::vector<Ptr<BackendWrapper> >& outBlobsWrappers,
                       Ptr<BackendNode>& node, bool isAsync)
 {
-#ifdef HAVE_INF_ENGINE
     CV_Assert(!node.empty());
     Ptr<InfEngineNgraphNode> ieNode = node.dynamicCast<InfEngineNgraphNode>();
     CV_Assert(!ieNode.empty());
     ieNode->net->forward(outBlobsWrappers, isAsync);
-#endif  // HAVE_INF_ENGINE
 }
 
 void InfEngineNgraphNet::addBlobs(const std::vector<cv::Ptr<BackendWrapper> >& ptrs)
@@ -716,6 +661,12 @@ void InfEngineNgraphNet::forward(const std::vector<Ptr<BackendWrapper> >& outBlo
     }
 }
 
+#else
+void forwardNgraph(const std::vector<Ptr<BackendWrapper> >& outBlobsWrappers,
+                   Ptr<BackendNode>& node, bool isAsync)
+{
+    CV_Assert(false && "nGraph is not enabled in this OpenCV build");
+}
 #endif
 
 }}

@@ -42,14 +42,17 @@
 
 #include "../precomp.hpp"
 #include "../op_inf_engine.hpp"
-#include "../ie_ngraph.hpp"
-#include <ngraph/op/experimental/layers/reorg_yolo.hpp>
 
 #include <opencv2/dnn/shape_utils.hpp>
 #include <opencv2/dnn/all_layers.hpp>
 
 #ifdef HAVE_OPENCL
 #include "opencl_kernels_dnn.hpp"
+#endif
+
+#ifdef HAVE_DNN_NGRAPH
+#include "../ie_ngraph.hpp"
+#include <ngraph/op/experimental/layers/reorg_yolo.hpp>
 #endif
 
 namespace cv
@@ -191,7 +194,7 @@ public:
     }
 #endif  // HAVE_INF_ENGINE
 
-#ifdef HAVE_INF_ENGINE
+#ifdef HAVE_DNN_NGRAPH
     virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> > &inputs,
                                         const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
@@ -199,7 +202,7 @@ public:
         auto reorg = std::make_shared<ngraph::op::ReorgYolo>(ieInpNode, ngraph::Strides{(size_t)reorgStride});
         return Ptr<BackendNode>(new InfEngineNgraphNode(reorg));
     }
-#endif  // HAVE_INF_ENGINE
+#endif  // HAVE_DNN_NGRAPH
 
     virtual int64 getFLOPS(const std::vector<MatShape> &inputs,
                            const std::vector<MatShape> &outputs) const CV_OVERRIDE

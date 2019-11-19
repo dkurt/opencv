@@ -43,8 +43,6 @@
 #include "../precomp.hpp"
 #include "layers_common.hpp"
 #include "../op_inf_engine.hpp"
-#include "../ie_ngraph.hpp"
-#include <ngraph/op/experimental/layers/detection_output.hpp>
 
 #include <float.h>
 #include <string>
@@ -54,10 +52,13 @@
 #include "opencl_kernels_dnn.hpp"
 #endif
 
+#ifdef HAVE_DNN_NGRAPH
+#include "../ie_ngraph.hpp"
+#include <ngraph/op/experimental/layers/detection_output.hpp>
+
 namespace ngraph {
 namespace op {
 
-#ifdef HAVE_INF_ENGINE
 class Dummy : public Op {
 public:
     Dummy() : Op("Dummy", {}) {
@@ -74,10 +75,10 @@ public:
         return std::make_shared<Dummy>();
     }
 };
-#endif
 
 }  // namespace op
 }  // namespace ngraph
+#endif
 
 namespace cv
 {
@@ -971,7 +972,7 @@ public:
 #endif  // HAVE_INF_ENGINE
 
 
-#ifdef HAVE_INF_ENGINE
+#ifdef HAVE_DNN_NGRAPH
     virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs, const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
     {
         CV_Assert(nodes.size() == 3);
@@ -998,7 +999,7 @@ public:
                        proposals, aux_class_preds, aux_box_preds, attrs);
         return Ptr<BackendNode>(new InfEngineNgraphNode(det_out));
     }
-#endif  // HAVE_INF_ENGINE
+#endif  // HAVE_DNN_NGRAPH
 };
 
 float util::caffe_box_overlap(const util::NormalizedBBox& a, const util::NormalizedBBox& b)
