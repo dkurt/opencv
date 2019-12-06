@@ -586,7 +586,7 @@ public:
             attrs.step_widths = _stepX;
             attrs.variances = _variance;
 
-            auto priorBox = std::make_shared<ngraph::op::PriorBoxClustered>(slice_layer, slice_image, attrs);
+            auto priorBox = std::make_shared<ngraph::op::PriorBoxClusteredIE>(slice_layer, slice_image, attrs);
             auto axis = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{1}, std::vector<int64_t>{0});
             auto unsqueeze = std::make_shared<ngraph::op::Unsqueeze>(priorBox, axis);
             return Ptr<BackendNode>(new InfEngineNgraphNode(unsqueeze));
@@ -607,7 +607,7 @@ public:
             attrs.step = _stepX;
             attrs.scale_all_sizes = !_aspectRatios.empty();
 
-            auto priorBox = std::make_shared<ngraph::op::PriorBox>(slice_layer, slice_image, attrs);
+            auto priorBox = std::make_shared<ngraph::op::PriorBoxIE>(slice_layer, slice_image, attrs);
             auto axis = std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{1}, std::vector<int64_t>{0});
             auto unsqueeze = std::make_shared<ngraph::op::Unsqueeze>(priorBox, axis);
             return Ptr<BackendNode>(new InfEngineNgraphNode(unsqueeze));
