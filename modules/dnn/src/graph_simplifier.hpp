@@ -21,7 +21,11 @@ public:
 
     virtual int getNumInputs() const = 0;
 
+    virtual int getNumOutputs() const = 0;
+
     virtual std::string getInputName(int idx) const = 0;
+
+    virtual std::string getOutputName(int idx) const = 0;
 
     virtual std::string getType() const = 0;
 

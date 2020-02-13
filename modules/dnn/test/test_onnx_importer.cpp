@@ -316,6 +316,12 @@ TEST_P(Test_ONNX_layers, Resize)
     testONNXModels("resize_bilinear");
 }
 
+TEST_P(Test_ONNX_layers, ResizeUnfused)
+{
+    testONNXModels("upsample_unfused");
+    testONNXModels("resize_nearest_unfused");
+}
+
 TEST_P(Test_ONNX_layers, MultyInputs)
 {
     const String model =  _tf("models/multy_inputs.onnx");

@@ -69,8 +69,14 @@ int Subgraph::getInputNodeId(const Ptr<ImportGraphWrapper>& net,
     const int numNodes = net->getNumNodes();
     for (int i = 0; i < numNodes; ++i)
     {
-        if (net->getNodeName(i) == name)
-            return i;
+        Ptr<ImportNodeWrapper> node = net->getNode(i);
+        const int numOutputs = node->getNumOutputs();
+        for (int j = 0; j < numOutputs; j++)
+        {
+            std::string outName = (node->getOutputName(j) != "graph_input") ? node->getOutputName(j) : net->getNodeName(i);
+            if (outName  == name)
+                return i;
+        }
     }
     CV_Error(Error::StsParseError, "Input node with name " + name + " not found");
 }
@@ -111,12 +117,12 @@ bool Subgraph::match(const Ptr<ImportGraphWrapper>& net, int nodeId,
                 continue;
             nodeId = getInputNodeId(net, node, j);
             const Ptr<ImportNodeWrapper> inpNode = net->getNode(nodeId);
-            if (inpNode->getType() != "Const")
+            if (inpNode->getType() != "Const" && inpNode->getType() != "Constant")
             {
                 nodesToMatch.push(nodeId);
                 targetNodes.push(inputNodes[j]);
             }
-            else if (nodes[inputNodes[j]] != "Const")
+            else if (nodes[inputNodes[j]] != "Const" && nodes[inputNodes[j]] != "Constant")
                 return false;
         }
         matchedNodesIds.push_back(nodeToMatch);
@@ -189,6 +195,7 @@ void simplifySubgraphs(const Ptr<ImportGraphWrapper>& net,
                        const std::vector<Ptr<Subgraph> >& patterns)
 {
     int numNodes = net->getNumNodes();
+    int numRemovedNodes = 0;
     std::vector<int> matchedNodesIds, targetNodesIds;
     for (int i = 0; i < numNodes; ++i)
     {
@@ -197,7 +204,9 @@ void simplifySubgraphs(const Ptr<ImportGraphWrapper>& net,
             if (patterns[j]->match(net, i, matchedNodesIds, targetNodesIds))
             {
                 patterns[j]->replace(net, matchedNodesIds, targetNodesIds);
-                numNodes -= matchedNodesIds.size() - 1;  // #matchedNodes removed and one added.
+                numRemovedNodes = numNodes - net->getNumNodes();
+                numNodes -= numRemovedNodes;
+                i -= numRemovedNodes;
                 break;
             }
         }

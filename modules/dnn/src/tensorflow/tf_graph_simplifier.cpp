@@ -29,9 +29,19 @@ public:
         return node->input_size();
     }
 
+    virtual int getNumOutputs() const CV_OVERRIDE
+    {
+        return 1;
+    }
+
     virtual std::string getInputName(int idx) const CV_OVERRIDE
     {
         return node->input(idx);
+    }
+
+    std::string getOutputName(int i) const CV_OVERRIDE
+    {
+        return node->name();
     }
 
     virtual std::string getType() const CV_OVERRIDE
