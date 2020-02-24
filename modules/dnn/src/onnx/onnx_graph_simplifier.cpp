@@ -26,23 +26,10 @@ public:
         return node ? node->input_size() : 0;
     }
 
-    virtual int getNumOutputs() const CV_OVERRIDE
-    {
-        return node ? node->output_size() : 1;
-    }
-
     virtual std::string getInputName(int idx) const CV_OVERRIDE
     {
         CV_Assert_N(node, idx < node->input_size());
         return node->input(idx);
-    }
-
-    virtual std::string getOutputName(int idx) const CV_OVERRIDE
-    {
-        if (!node)
-            return "graph_input";
-        CV_Assert_N(node, idx < node->output_size());
-        return node->output(idx);
     }
 
     virtual std::string getType() const CV_OVERRIDE
@@ -89,12 +76,21 @@ public:
         return numInputs + net.node_size();
     }
 
-    virtual std::string getNodeName(int idx) const CV_OVERRIDE
+    virtual int getNumOutputs(int nodeId) const CV_OVERRIDE
     {
-        if (idx < numInputs)
-            return net.input(idx).name();
+        if (nodeId < numInputs)
+            return 1;
         else
-            return net.node(idx - numInputs).output(0);
+            return net.node(nodeId - numInputs).output_size();
+    }
+
+    virtual std::string getOutputName(int nodeId, int outId) const CV_OVERRIDE
+    {
+        CV_Assert(outId < getNumOutputs(nodeId));
+        if (nodeId < numInputs)
+            return net.input(nodeId).name();
+        else
+            return net.node(nodeId - numInputs).output(outId);
     }
 
     virtual void removeNode(int idx) CV_OVERRIDE

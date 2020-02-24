@@ -69,12 +69,10 @@ int Subgraph::getInputNodeId(const Ptr<ImportGraphWrapper>& net,
     const int numNodes = net->getNumNodes();
     for (int i = 0; i < numNodes; ++i)
     {
-        Ptr<ImportNodeWrapper> node = net->getNode(i);
-        const int numOutputs = node->getNumOutputs();
+        const int numOutputs = net->getNumOutputs(i);
         for (int j = 0; j < numOutputs; j++)
         {
-            std::string outName = (node->getOutputName(j) != "graph_input") ? node->getOutputName(j) : net->getNodeName(i);
-            if (outName  == name)
+            if (net->getOutputName(i, j) == name)
                 return i;
         }
     }

@@ -29,19 +29,9 @@ public:
         return node->input_size();
     }
 
-    virtual int getNumOutputs() const CV_OVERRIDE
-    {
-        return 1;
-    }
-
     virtual std::string getInputName(int idx) const CV_OVERRIDE
     {
         return node->input(idx);
-    }
-
-    std::string getOutputName(int i) const CV_OVERRIDE
-    {
-        return node->name();
     }
 
     virtual std::string getType() const CV_OVERRIDE
@@ -79,9 +69,15 @@ public:
         return net.node_size();
     }
 
-    virtual std::string getNodeName(int idx) const CV_OVERRIDE
+    virtual int getNumOutputs(int nodeId) const CV_OVERRIDE
     {
-        return net.node(idx).name();
+        return 1;
+    }
+
+    virtual std::string getOutputName(int nodeId, int outId) const CV_OVERRIDE
+    {
+        CV_Assert(outId == 0);
+        return net.node(nodeId).name();
     }
 
     virtual void removeNode(int idx) CV_OVERRIDE
