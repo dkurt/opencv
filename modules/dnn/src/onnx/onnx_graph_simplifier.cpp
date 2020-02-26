@@ -154,44 +154,19 @@ private:
     int axis;
 };
 
-class FuseUpsampleSubgraph : public Subgraph
-{
-public:
-    FuseUpsampleSubgraph() : scaleH(1), scaleW(1), emptyNodeId(-1) {}
-
-    void finalize(const Ptr<ImportGraphWrapper>& net,
-                  const Ptr<ImportNodeWrapper>& fusedNode,
-                  std::vector<Ptr<ImportNodeWrapper> >& inputs) CV_OVERRIDE
-    {
-        opencv_onnx::NodeProto* node = fusedNode.dynamicCast<ONNXNodeWrapper>()->node;
-        opencv_onnx::AttributeProto* attrH = node->add_attribute();
-        attrH->set_name("height_scale");
-        attrH->set_i(scaleH);
-        opencv_onnx::AttributeProto* attrW = node->add_attribute();
-        attrW->set_name("width_scale");
-        attrW->set_i(scaleW);
-        //remove empty constant node from the net
-        if (emptyNodeId != -1)
-            net->removeNode(emptyNodeId);
-    }
-
-protected:
-    int scaleH, scaleW, emptyNodeId;
-};
-
-class ExtractScalesSubgraph : public FuseUpsampleSubgraph
+class ExtractScalesSubgraph : public Subgraph
 {
 public:
     ExtractScalesSubgraph()
     {
-        int input = addNodeToMatch("");
+        input = addNodeToMatch("");
 
         int indexH = addNodeToMatch("Constant");
         int shape1 = addNodeToMatch("Shape", input);
         int gather1 = addNodeToMatch("Gather", shape1, indexH);
         int castG1 = addNodeToMatch("Cast", gather1);
-        int scaleH = addNodeToMatch("Constant");
-        int mul1 = addNodeToMatch("Mul", castG1, scaleH);
+        scaleHNode = addNodeToMatch("Constant");
+        int mul1 = addNodeToMatch("Mul", castG1, scaleHNode);
         int castM1 = addNodeToMatch("Cast", mul1);
         int floor1 = addNodeToMatch("Floor", castM1);
 
@@ -199,141 +174,84 @@ public:
         int shape2 = addNodeToMatch("Shape", input);
         int gather2 = addNodeToMatch("Gather", shape2, indexW);
         int castG2 = addNodeToMatch("Cast", gather2);
-        int scaleW = addNodeToMatch("Constant");
-        int mul2 = addNodeToMatch("Mul", castG2, scaleW);
+        scaleWNode = addNodeToMatch("Constant");
+        int mul2 = addNodeToMatch("Mul", castG2, scaleWNode);
         int castM2 = addNodeToMatch("Cast", mul2);
         int floor2 = addNodeToMatch("Floor", castM2);
 
         int unsqueeze1 = addNodeToMatch("Unsqueeze", floor1);
         int unsqueeze2 = addNodeToMatch("Unsqueeze", floor2);
-        addNodeToMatch("Concat", unsqueeze1, unsqueeze2);
-
-        setFusedNode("Scales", input);
+        concatId = addNodeToMatch("Concat", unsqueeze1, unsqueeze2);
     }
 
-    virtual bool match(const Ptr<ImportGraphWrapper>& net, int nodeId,
-                       std::vector<int>& matchedNodesIds,
-                       std::vector<int>& targetNodesIds) CV_OVERRIDE
+    void finalize(const Ptr<ImportGraphWrapper>& net,
+                  const Ptr<ImportNodeWrapper>& fusedNode,
+                  std::vector<Ptr<ImportNodeWrapper> >& inputs) CV_OVERRIDE
     {
-        if (FuseUpsampleSubgraph::match(net, nodeId, matchedNodesIds, targetNodesIds))
-        {
-            std::vector<cv::Mat> nodes_attributes;
-            for (int i = matchedNodesIds.front(); i < matchedNodesIds.back(); i++)
-            {
-                if (std::find(matchedNodesIds.begin(), matchedNodesIds.end(), i) == matchedNodesIds.end())
-                {
-                    opencv_onnx::NodeProto* constant_node = net->getNode(i).dynamicCast<ONNXNodeWrapper>()->node;
-                    opencv_onnx::TensorProto tensor_proto = constant_node->attribute(0).t();
-                    nodes_attributes.push_back(getMatFromTensor(tensor_proto));
-                }
-            }
-            CV_Assert(nodes_attributes[0].total() == 1/*indexH*/ && nodes_attributes[1].total() == 1/*scaleH*/ &&
-                nodes_attributes[2].total() == 1/*indexW*/ && nodes_attributes[3].total() == 1/*scaleW*/);
+        opencv_onnx::NodeProto* constant_node = inputs[1].dynamicCast<ONNXNodeWrapper>()->node;
+        opencv_onnx::TensorProto tensor_proto = constant_node->attribute(0).t();
+        float scaleW = getMatFromTensor(tensor_proto).at<float>(0);
 
-            if (nodes_attributes[0].at<int>(0) == 2 && nodes_attributes[2].at<int>(0) == 3)
-            {
-                scaleH = (int)nodes_attributes[1].at<float>(0);
-                scaleW = (int)nodes_attributes[3].at<float>(0);
-            }
-            else
-            {
-                scaleH = (int)nodes_attributes[3].at<float>(0);
-                scaleW = (int)nodes_attributes[1].at<float>(0);
-            }
-            return true;
-        }
-        return false;
+        constant_node = inputs[2].dynamicCast<ONNXNodeWrapper>()->node;
+        tensor_proto = constant_node->attribute(0).t();
+        float scaleH = getMatFromTensor(tensor_proto).at<float>(0);
+
+        opencv_onnx::NodeProto* node = fusedNode.dynamicCast<ONNXNodeWrapper>()->node;
+        opencv_onnx::AttributeProto* attrH = node->add_attribute();
+        attrH->set_name("height_scale");
+        attrH->set_i(scaleH);
+        opencv_onnx::AttributeProto* attrW = node->add_attribute();
+        attrW->set_name("width_scale");
+        attrW->set_i(scaleW);
+
+        node->mutable_input()->DeleteSubrange(1, 2);  // Remove two last inputs
     }
+
+protected:
+    int input, concatId;
+    int scaleHNode, scaleWNode;
 };
 
-class UpsampleSubgraph : public FuseUpsampleSubgraph
+class UpsampleSubgraph : public ExtractScalesSubgraph
 {
 public:
-    UpsampleSubgraph()
+    UpsampleSubgraph() : ExtractScalesSubgraph()
     {
-        int input = addNodeToMatch("");
-
-        int scaleHW = addNodeToMatch("Scales", input);
-        int scaleNC = addNodeToMatch("Constant");
-        int cast1 = addNodeToMatch("Cast", scaleHW);
-
         int shape = addNodeToMatch("Shape", input);
         int slice = addNodeToMatch("Slice", shape);
-        int cast2 = addNodeToMatch("Cast", slice);
 
-        int inpDiv = addNodeToMatch("Div", cast1, cast2);
-        int inpConcat2 = addNodeToMatch("Concat", scaleNC, inpDiv);
+        int castConcat = addNodeToMatch("Cast", concatId);
+        int castSlice = addNodeToMatch("Cast", slice);
+        int divide = addNodeToMatch("Div", castConcat, castSlice);
 
-        addNodeToMatch("Upsample", input, inpConcat2);
-        setFusedNode("Upsample", input);
-    }
+        int constant = addNodeToMatch("Constant");
+        int concat = addNodeToMatch("Concat", constant, divide);
 
-    virtual bool match(const Ptr<ImportGraphWrapper>& net, int nodeId,
-                       std::vector<int>& matchedNodesIds,
-                       std::vector<int>& targetNodesIds) CV_OVERRIDE
-    {
-        if (FuseUpsampleSubgraph::match(net, nodeId, matchedNodesIds, targetNodesIds))
-        {
-            Ptr<ImportNodeWrapper> scales = net->getNode(matchedNodesIds[0]);
-            opencv_onnx::NodeProto* node = scales.dynamicCast<ONNXNodeWrapper>()->node;
-            opencv_onnx::AttributeProto attrH = node->attribute(1);
-            scaleH = attrH.i();
-            opencv_onnx::AttributeProto attrW = node->attribute(2);
-            scaleW = attrW.i();
-            return true;
-        }
-        return false;
+        addNodeToMatch("Upsample", input, concat);
+        setFusedNode("Upsample", input, scaleWNode, scaleHNode);
     }
 };
 
-class ResizeSubgraph : public FuseUpsampleSubgraph
+class ResizeSubgraph : public ExtractScalesSubgraph
 {
 public:
-    ResizeSubgraph()
+    ResizeSubgraph() : ExtractScalesSubgraph()
     {
-        int input = addNodeToMatch("");
-
-        int scaleHW = addNodeToMatch("Scales", input);
-        int constantROI = addNodeToMatch("Constant");
-
         int shape = addNodeToMatch("Shape", input);
-        int axes_slice = addNodeToMatch("Constant");
-        int start_slice = addNodeToMatch("Constant");
-        int end_slice = addNodeToMatch("Constant");
-        int slice = addNodeToMatch("Slice", shape, start_slice, end_slice, axes_slice);
+        int slice = addNodeToMatch("Slice", shape, addNodeToMatch("Constant"), addNodeToMatch("Constant"), addNodeToMatch("Constant"));
 
-        int cast = addNodeToMatch("Cast", scaleHW);
+        int castConcat = addNodeToMatch("Cast", concatId);
+        int concat = addNodeToMatch("Concat", slice, castConcat);
+        int constant = addNodeToMatch("Constant");
 
-        int concat = addNodeToMatch("Concat", slice, cast);
-        addNodeToMatch("Resize", input, constantROI, constantROI, concat);
-        setFusedNode("Upsample", input);
-    }
-
-    virtual bool match(const Ptr<ImportGraphWrapper>& net, int nodeId,
-                       std::vector<int>& matchedNodesIds,
-                       std::vector<int>& targetNodesIds) CV_OVERRIDE
-    {
-        if (FuseUpsampleSubgraph::match(net, nodeId, matchedNodesIds, targetNodesIds))
-        {
-            Ptr<ImportNodeWrapper> scales = net->getNode(matchedNodesIds[0]);
-            opencv_onnx::NodeProto* node = scales.dynamicCast<ONNXNodeWrapper>()->node;
-            opencv_onnx::AttributeProto attr = node->attribute(1);
-            opencv_onnx::AttributeProto attrH = node->attribute(1);
-            scaleH = attrH.i();
-            opencv_onnx::AttributeProto attrW = node->attribute(2);
-            scaleW = attrW.i();
-            //constant node id after matchedNodesIds removal.
-            emptyNodeId = matchedNodesIds.front();
-            return true;
-        }
-        return false;
+        addNodeToMatch("Resize", input, constant, constant, concat);
+        setFusedNode("Upsample", input, scaleWNode, scaleHNode);
     }
 };
 
 void simplifySubgraphs(opencv_onnx::GraphProto& net)
 {
     std::vector<Ptr<Subgraph> > subgraphs;
-    subgraphs.push_back(makePtr<ExtractScalesSubgraph>());
     subgraphs.push_back(makePtr<UpsampleSubgraph>());
     subgraphs.push_back(makePtr<ResizeSubgraph>());
     subgraphs.push_back(makePtr<SoftMaxSubgraph>());
@@ -343,8 +261,9 @@ void simplifySubgraphs(opencv_onnx::GraphProto& net)
 
 Mat getMatFromTensor(opencv_onnx::TensorProto& tensor_proto)
 {
-    CV_Assert(!tensor_proto.raw_data().empty() || !tensor_proto.float_data().empty()
-                    || !tensor_proto.double_data().empty() || !tensor_proto.int64_data().empty());
+    if (tensor_proto.raw_data().empty() && tensor_proto.float_data().empty() &&
+        tensor_proto.double_data().empty() && tensor_proto.int64_data().empty())
+        return Mat();
 
     opencv_onnx::TensorProto_DataType datatype = tensor_proto.data_type();
     Mat blob;

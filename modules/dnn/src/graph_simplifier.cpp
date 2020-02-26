@@ -193,7 +193,6 @@ void simplifySubgraphs(const Ptr<ImportGraphWrapper>& net,
                        const std::vector<Ptr<Subgraph> >& patterns)
 {
     int numNodes = net->getNumNodes();
-    int numRemovedNodes = 0;
     std::vector<int> matchedNodesIds, targetNodesIds;
     for (int i = 0; i < numNodes; ++i)
     {
@@ -202,9 +201,7 @@ void simplifySubgraphs(const Ptr<ImportGraphWrapper>& net,
             if (patterns[j]->match(net, i, matchedNodesIds, targetNodesIds))
             {
                 patterns[j]->replace(net, matchedNodesIds, targetNodesIds);
-                numRemovedNodes = numNodes - net->getNumNodes();
-                numNodes -= numRemovedNodes;
-                i -= numRemovedNodes;
+                numNodes -= matchedNodesIds.size() - 1;  // #matchedNodes removed and one added.
                 break;
             }
         }
