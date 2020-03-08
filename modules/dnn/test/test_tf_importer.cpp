@@ -186,6 +186,11 @@ TEST_P(Test_TensorFlow_layers, eltwise)
     runTensorFlowNet("eltwise_sub");
 }
 
+TEST_P(Test_TensorFlow_layers, channel_broadcast)
+{
+    runTensorFlowNet("channel_broadcast");
+}
+
 TEST_P(Test_TensorFlow_layers, pad_and_concat)
 {
     runTensorFlowNet("pad_and_concat");
