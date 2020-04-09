@@ -773,6 +773,11 @@ TEST_P(Test_ONNX_nets, Inception_v1)
     testONNXModels("inception_v1", pb);
 }
 
+TEST_P(Test_ONNX_nets, ZeroPad2d)
+{
+    testONNXModels("ZeroPad2d");
+}
+
 TEST_P(Test_ONNX_nets, Shufflenet)
 {
     if (backend == DNN_BACKEND_INFERENCE_ENGINE_NN_BUILDER_2019)

@@ -28,9 +28,6 @@ template<typename T1, typename T2>
 void convertInt64ToInt32(const T1& src, T2& dst, int size)
 {
     for (int i = 0; i < size; i++) {
-        if (src[i] < std::numeric_limits<int32_t>::min() || src[i] > std::numeric_limits<int32_t>::max()) {
-            CV_Error(Error::StsOutOfRange, "Input is out of OpenCV 32S range");
-        }
         dst[i] = saturate_cast<int32_t>(src[i]);
     }
 }
