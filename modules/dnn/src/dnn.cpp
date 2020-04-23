@@ -3207,11 +3207,11 @@ Net Net::Impl::createNetworkFromModelOptimizer(InferenceEngine::CNNNetwork& ieNe
         {
             Ptr<Layer> cvLayer(new NgraphBackendLayer(ieNet));
 
-            InferenceEngine::CNNLayerPtr ieLayer = ieNet.getLayerByName(it.first.c_str());
-            CV_Assert(ieLayer);
+            // InferenceEngine::CNNLayerPtr ieLayer = ieNet.getLayerByName(it.first.c_str());
+            // CV_Assert(ieLayer);
 
             cvLayer->name = it.first;
-            cvLayer->type = ieLayer->type;
+            // cvLayer->type = ieLayer->type;
             ld.layerInstance = cvLayer;
 
             ld.backendNodes[DNN_BACKEND_INFERENCE_ENGINE_NGRAPH] = backendNode;
