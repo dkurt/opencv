@@ -785,8 +785,9 @@ public:
         }
         else
         {
+            std::vector<int64_t> _shape(kernel_shape.begin(), kernel_shape.end());
             auto shape = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                             ngraph::Shape{kernel_shape.size()}, kernel_shape.data());
+                             ngraph::Shape{_shape.size()}, _shape.data());
             ieWeights  = std::make_shared<ngraph::op::v1::Reshape>(ieWeights, shape, true);
         }
 
@@ -820,8 +821,9 @@ public:
             std::shared_ptr<ngraph::Node> bias;
             if (nodes.size() == 3)
             {
+                std::vector<int64_t> _shape(shape.begin(), shape.end());
                 auto bias_shape = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                                    ngraph::Shape{shape.size()}, shape.data());
+                                    ngraph::Shape{_shape.size()}, _shape.data());
                 bias = std::make_shared<ngraph::op::v1::Reshape>(nodes[2].dynamicCast<InfEngineNgraphNode>()->node, bias_shape, true);
             }
             else
