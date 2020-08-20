@@ -684,11 +684,13 @@ void InfEngineNgraphNet::initPlugin(InferenceEngine::CNNNetwork& net)
         }
         std::map<std::string, std::string> config;
         if (device_name == "MYRIAD") {
-#if INF_ENGINE_VER_MAJOR_GT(INF_ENGINE_RELEASE_2020_4)
-            config.emplace("MYRIAD_DETECT_NETWORK_BATCH", CONFIG_VALUE(NO));
-#else
+// #if INF_ENGINE_VER_MAJOR_GT(INF_ENGINE_RELEASE_2020_4)
+            // config.emplace(VPU_CONFIG_KEY("DETECT_NETWORK_BATCH"), CONFIG_VALUE(NO));
+//             config.emplace("VPU_LOG_LEVEL", CONFIG_VALUE(LOG_DEBUG));
+// #else
             config.emplace("VPU_DETECT_NETWORK_BATCH", CONFIG_VALUE(NO));
-#endif
+            // config.emplace("VPU_LOG_LEVEL", CONFIG_VALUE(LOG_DEBUG));
+// #endif
         }
 
         bool isHetero = device_name == "FPGA";
