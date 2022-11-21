@@ -227,20 +227,30 @@ public:
             return;
 
         if (is1x1() || outC <= 16)
+        {
             top.reorder(x, c, y)
                .split(y, yo, yi, 2)
                .fuse(yo, n, tile)
                .parallel(tile)
-               .unroll(yi)
-               .vectorize(x, outW >= 16 ? 16 : outW);
+               .unroll(yi);
+            if (outW >= 16) {
+                top.vectorize(x, 16);
+            }
+            //    .vectorize(x, outW >= 16 ? 16 : outW);
+        }
         else
+        {
             top.reorder(x, c, y)
                .split(y, yo, yi, 2)
                .split(c, co, ci, 16)
                .fuse(yo, co, tile).fuse(n, tile, tile)
                .parallel(tile)
-               .unroll(yi)
-               .vectorize(x, outW >= 16 ? 16 : outW);
+               .unroll(yi);
+            if (outW >= 16) {
+                top.vectorize(x, 16);
+            }
+            //    .vectorize(x, outW >= 16 ? 16 : outW);
+        }
         padded_input.compute_at(top, yi);
 #endif  // HAVE_HALIDE
     }

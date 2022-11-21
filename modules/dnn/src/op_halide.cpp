@@ -322,6 +322,13 @@ void compileHalide(const std::vector<Mat> &outputs, Ptr<BackendNode>& node, int 
         target.set_feature(Halide::Target::OpenCL);
     }
     CV_Assert(target.supported());
+    target.vector_bits = 16 * 8;
+
+    std::vector<Halide::Target::Feature> features;
+    features.push_back(Halide::Target::RVV);
+    target.set_features(features);
+
+    top.print_loop_nest();
     top.compile_jit(target);
 #endif  // HAVE_HALIDE
 }
@@ -353,6 +360,7 @@ CV__DNN_INLINE_NS_BEGIN
 void Layer::applyHalideScheduler(Ptr<BackendNode>& node, const std::vector<Mat*> &inputs,
                                  const std::vector<Mat> &outputs, int targetId) const
 {
+    return;
 #ifndef HAVE_HALIDE
     CV_Error(Error::StsNotImplemented, "");
 #else
@@ -375,8 +383,8 @@ void Layer::applyHalideScheduler(Ptr<BackendNode>& node, const std::vector<Mat*>
             if (outC > 8)
               top.split(c, co, ci, 8)
                  .fuse(x, y, tile).fuse(co, tile, tile).fuse(n, tile, tile)
-                 .parallel(tile)
-                 .vectorize(ci, 8);
+                 .parallel(tile);
+                //  .vectorize(ci, 8);
             else
               top.fuse(x, y, tile).fuse(c, tile, tile).fuse(n, tile, tile)
                  .parallel(tile);
@@ -389,8 +397,8 @@ void Layer::applyHalideScheduler(Ptr<BackendNode>& node, const std::vector<Mat*>
                    .split(y, yo, yi, 2)
                    .fuse(yo, n, tile)
                    .parallel(tile)
-                   .unroll(yi)
-                   .vectorize(x, outW >= 16 ? 16 : outW);
+                   .unroll(yi);
+                //    .vectorize(x, outW >= 16 ? 16 : outW);
             }
         }
     }
