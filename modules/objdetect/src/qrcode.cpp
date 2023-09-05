@@ -2905,6 +2905,12 @@ std::string extractCodeBlocks(const Mat& source, QRCodeEncoder::CorrectionLevel 
             int value = binToDec(&bitstream[offset], len * 8 - offset - 1);
             result += mapSymbol(value);
         }
+    } else if (mode == QRCodeEncoder::EncodeMode::MODE_BYTE) {
+        int num = binToDec(&bitstream[4], 8);
+        int offset = 12;
+        for (int i = 0; i < num; ++i, offset += 8) {
+            result += binToDec(&bitstream[offset], 8);
+        }
     } else {
         CV_Error(Error::StsNotImplemented, "mode");
     }
