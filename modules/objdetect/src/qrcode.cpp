@@ -2743,7 +2743,7 @@ Mat getMask(int version_size, int mask_type_num) {
     // Mat j = cv::repeat(counts, version_size, 1);
     // if (mask_type_num == 0)
     //     return (i + j) % 2 == 0;
-    Mat mask(version_size, version_size, CV_8UC1);
+    Mat mask = Mat::zeros(version_size, version_size, CV_8UC1);
     for (int i = 0; i < version_size; i++)
     {
         for (int j = 0; j < version_size; j++)
@@ -2764,7 +2764,113 @@ Mat getMask(int version_size, int mask_type_num) {
     return mask;
 }
 
-bool decode(const Mat& straight) {
+void extractCodeBlocks(const Mat& source) {
+    CV_Assert(source.rows == 21);
+    CV_Assert(source.cols == 21);
+
+    // const uint8_t* data = source.ptr<const uint8_t>();
+    // int step = source.step;
+
+    // std::vector<uint8_t> blocks;
+    // blocks.reserve(26);
+
+    std::vector<uint8_t> bitstream;
+// std::cout << source << std::endl;
+    Mat right = source.rowRange(9, source.rows).colRange(source.cols - 8, source.cols).clone();
+    Mat middle = source.colRange(9, source.cols - 8);
+    Mat left = source.rowRange(9, source.rows - 8).colRange(0, 9);
+    std::cout << right.size() << std::endl;
+    std::cout << middle.size() << std::endl;
+    std::cout << left.size() << std::endl;
+
+    int moveUpwards = true;
+    for (int i = right.cols / 2 - 1; i >= 0; --i) {
+        Mat col0 = right.col(i * 2);
+        Mat col1 = right.col(i * 2 + 1);
+        for (int j = 0; j < right.rows; ++j) {
+            if (moveUpwards) {
+                bitstream.push_back(col1.at<uint8_t>(right.rows - 1 - j));
+                bitstream.push_back(col0.at<uint8_t>(right.rows - 1 - j));
+            } else {
+                bitstream.push_back(col1.at<uint8_t>(j));
+                bitstream.push_back(col0.at<uint8_t>(j));
+            }
+        }
+        moveUpwards = !moveUpwards;
+    }
+
+    moveUpwards = true;
+    for (int i = middle.cols / 2 - 1; i >= 0; --i) {
+        Mat col0 = middle.col(i * 2);
+        Mat col1 = middle.col(i * 2 + 1);
+        for (int j = 0; j < middle.rows; ++j) {
+            if (moveUpwards) {
+                if (middle.rows - 1 - j == 6)
+                    continue;
+                bitstream.push_back(col1.at<uint8_t>(middle.rows - 1 - j));
+                bitstream.push_back(col0.at<uint8_t>(middle.rows - 1 - j));
+            } else {
+                if (j == 6)
+                    continue;
+                bitstream.push_back(col1.at<uint8_t>(j));
+                bitstream.push_back(col0.at<uint8_t>(j));
+            }
+        }
+        moveUpwards = !moveUpwards;
+    }
+
+    moveUpwards = true;
+    for (int i = left.cols - 1; i >= 0; i -= 2) {
+        if (i == 6) {
+            i -= 1;
+        }
+        Mat col0 = left.col(i - 1);
+        Mat col1 = left.col(i);
+        for (int j = 0; j < left.rows; ++j) {
+            if (moveUpwards) {
+                bitstream.push_back(col1.at<uint8_t>(left.rows - 1 - j));
+                bitstream.push_back(col0.at<uint8_t>(left.rows - 1 - j));
+            } else {
+                bitstream.push_back(col1.at<uint8_t>(j));
+                bitstream.push_back(col0.at<uint8_t>(j));
+            }
+        }
+        moveUpwards = !moveUpwards;
+    }
+
+    for (int k = 0; k < bitstream.size(); ++k) {
+        std::cout << (int)bitstream[k] << " ";
+        if (k % 8 == 7)
+            std::cout << "| ";
+
+    }
+    std::cout << std::endl;
+
+    // right = right.reshape(1, right.total() / 2);
+    // std::cout << right.size() << std::endl;
+    // std::cout << middle.size() << std::endl;
+    // std::cout << left.size() << std::endl;
+
+
+    // bool nextLine = false;
+    // // int vertDir = -1;
+    // for (int i = source.total() - 1; i >= 0; --i) {
+    //     uint8_t symbol = 0;
+    //     for (int j = 7; j >= 0; --j) {
+    //         symbol |= data[i] << j;
+    //         if (nextLine) {
+    //             i -= step - 1;
+    //         } else {
+    //             i -= 1;
+    //             nextLine = true;
+    //         }
+    //     }
+    //     std::cout << (int)symbol << std::endl;
+    //     blocks.push_back(symbol);
+    // }
+}
+
+bool decode(Mat& straight) {
     CV_Assert(straight.rows == 21);
     CV_Assert(straight.cols == 21);
     straight /= 255;
@@ -2781,19 +2887,21 @@ bool decode(const Mat& straight) {
     for (int i = 9; i < 15; ++i)
         format_info |= straight.at<uint8_t>(8, 14 - i) << i;
 
-    uint16_t mask_pattern = 0b1101010000010010;  // extra 1 as we invert format_info
+    uint16_t mask_pattern = 0b101010000010010;
     format_info = ~format_info ^ mask_pattern;
 
-    int level = format_info >> 13;
+    int level = (format_info >> 13) & 0b11;
     int data_mask_pattern = (format_info >> 10) & 0b111;
     printBinary(level);
     printBinary(data_mask_pattern);
+    std::cout << level << " " << data_mask_pattern << std::endl;
 
     // Generate data mask
     Mat mask = getMask(21, data_mask_pattern);
     Mat masked;
     bitwise_xor(straight, mask, masked);
 
+    extractCodeBlocks(masked);
     return true;
 }
 
