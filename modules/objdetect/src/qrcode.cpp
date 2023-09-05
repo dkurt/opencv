@@ -2773,6 +2773,17 @@ inline int binToDec(uint8_t* data, int len) {
     return value;
 }
 
+static inline char mapSymbol(int v)
+{
+    static char map[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+                         'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
+                         'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
+                         'U', 'V', 'W', 'X', 'Y', 'Z', ' ', '$', '%', '*',
+                         '+', '-', '.', '/', ':'};
+    return map[v];
+}
+
+
 std::string extractCodeBlocks(const Mat& source, QRCodeEncoder::CorrectionLevel level) {
     CV_Assert(source.rows == 21);
     CV_Assert(source.cols == 21);
@@ -2863,7 +2874,7 @@ std::string extractCodeBlocks(const Mat& source, QRCodeEncoder::CorrectionLevel 
     // Decode depends on the mode
     std::string result;
     if (mode == QRCodeEncoder::EncodeMode::MODE_NUMERIC) {
-        uint8_t numDigits = binToDec(&bitstream[4], 10);
+        int numDigits = binToDec(&bitstream[4], 10);
         int offset = 14;
         for (int i = 0; i < numDigits / 3; ++i) {
             int triple = binToDec(&bitstream[offset], 10);
@@ -2879,6 +2890,20 @@ std::string extractCodeBlocks(const Mat& source, QRCodeEncoder::CorrectionLevel 
             if (remainingDigits == 2)
                 result += '0' + (triple / 10) % 10;
             result += '0' + triple % 10;
+        }
+    } else if (mode == QRCodeEncoder::EncodeMode::MODE_ALPHANUMERIC) {
+        int num = binToDec(&bitstream[4], 9);
+        int offset = 13;
+        for (int i = 0; i < num / 2; ++i) {
+            int tuple = binToDec(&bitstream[offset], 11);
+            result += mapSymbol(tuple / 45);
+            result += mapSymbol(tuple % 45);
+            offset += 11;
+        }
+        if (num % 2) {
+            int len = version_info_database[1].ecc[level].data_codewords_in_G1;
+            int value = binToDec(&bitstream[offset], len * 8 - offset - 1);
+            result += mapSymbol(value);
         }
     } else {
         CV_Error(Error::StsNotImplemented, "mode");
