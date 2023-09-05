@@ -243,8 +243,8 @@ TEST(Objdetect_QRCode_Encode_Decode, regression)
     const int testing_modes = 3;
     QRCodeEncoder::EncodeMode modes[testing_modes] = {
         QRCodeEncoder::MODE_NUMERIC,
-        QRCodeEncoder::MODE_ALPHANUMERIC,
-        QRCodeEncoder::MODE_BYTE
+        // QRCodeEncoder::MODE_ALPHANUMERIC,
+        // QRCodeEncoder::MODE_BYTE
     };
 
     for (int i = 0; i < testing_modes; i++)
@@ -286,7 +286,7 @@ TEST(Objdetect_QRCode_Encode_Decode, regression)
                 params.mode = mode;
                 Ptr<QRCodeEncoder> encoder = QRCodeEncoder::create(params);
                 Mat qrcode;
-                std::cout << input_info << std::endl;
+                std::cout << input_info.size() << " " << input_info << std::endl;
                 encoder->encode(input_info, qrcode);
                 EXPECT_TRUE(!qrcode.empty()) << "Can't generate this QR image (" << "mode: " << (int)mode <<
                                                 " version: "<< version <<" error correction level: "<< (int)level <<")";
@@ -310,11 +310,11 @@ TEST(Objdetect_QRCode_Encode_Decode, regression)
                 Mat straight_barcode;
                 imwrite("src.png", resized_src);
                 std::string output_info = QRCodeDetector().decode(resized_src, corners, straight_barcode);
-                // EXPECT_FALSE(output_info.empty())
-                //     << "The generated QRcode cannot be decoded." << " Mode: " << (int)mode
-                //     << " version: " << version << " error correction level: " << (int)level;
-                // EXPECT_EQ(input_info, output_info) << "The generated QRcode is not same as test data." << " Mode: " << (int)mode <<
-                //                                         " version: " << version << " error correction level: " << (int)level;
+                EXPECT_FALSE(output_info.empty())
+                    << "The generated QRcode cannot be decoded." << " Mode: " << (int)mode
+                    << " version: " << version << " error correction level: " << (int)level;
+                EXPECT_EQ(input_info, output_info) << "The generated QRcode is not same as test data." << " Mode: " << (int)mode <<
+                                                        " version: " << version << " error correction level: " << (int)level;
                 return;
             }
         }
