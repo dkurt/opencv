@@ -2719,4 +2719,19 @@ INSTANTIATE_TEST_CASE_P(TestLayerFusion, ConvolutionActivationEltwiseFusion, Com
                         TestLayerFusion::dnnBackendsAndTargetsForFusionTests()
 ));
 
+TEST(Layer_Reshape, explicit_shape_with_batch)
+{
+    LayerParams lp;
+    std::vector<int> dims{1, 3};
+    lp.set("dim", DictValue::arrayInt(dims.data(), dims.size()));
+    Ptr<ReshapeLayer> layer = ReshapeLayer::create(lp);
+
+    Mat inp = Mat::zeros(2, 3, CV_32F);
+    std::vector<Mat> inputs(1, inp), outputs;
+    runLayer(layer, inputs, outputs);
+
+    ASSERT_EQ(shape(outputs[0]), shape(2, 3));
+}
+
+
 }} // namespace

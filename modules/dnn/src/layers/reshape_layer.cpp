@@ -181,8 +181,15 @@ public:
             const DictValue &paramShape = params.get("dim");
             int i, dims = paramShape.size();
             newShapeDesc.resize(dims);
-            for (i = 0; i < dims; i++)
+            bool explicitMask = true;
+            for (i = 0; i < dims; i++) {
                 newShapeDesc[i] = paramShape.get<int>(i);
+                explicitMask &= newShapeDesc[i] > 0;
+            }
+            // This is a workaround for a batch dimension
+            if (!newShapeDesc.empty() && explicitMask && newShapeRange.start == 0) {
+                newShapeDesc[0] = -1;
+            }
         }
         if (hasDynamicShapes)
         {
