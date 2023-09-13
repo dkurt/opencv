@@ -225,7 +225,7 @@ TEST(Objdetect_QRCode_Encode_Decode, regression)
     const std::string root = "qrcode/decode_encode";
     const int min_version = 1;
     const int test_max_version = 1;
-    const int max_ec_level = 0;
+    const int max_ec_level = 3;
     const std::string dataset_config = findDataFile(root + "/" + "symbol_sets.json");
     const std::string version_config = findDataFile(root + "/" + "capacity.json");
 

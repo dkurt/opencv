@@ -2768,7 +2768,7 @@ Mat getMask(int version_size, int mask_type_num) {
 inline int binToDec(uint8_t* data, int len) {
     int value = 0;
     for (int i = 0; i < len; ++i) {
-        value |= !data[i] << (len - 1 - i);
+        value |= data[i] << (len - 1 - i);
     }
     return value;
 }
@@ -2795,13 +2795,12 @@ std::string extractCodeBlocks(const Mat& source, QRCodeEncoder::CorrectionLevel 
     // blocks.reserve(26);
 
     std::vector<uint8_t> bitstream;
-// std::cout << source << std::endl;
     Mat right = source.rowRange(9, source.rows).colRange(source.cols - 8, source.cols).clone();
     Mat middle = source.colRange(9, source.cols - 8);
     Mat left = source.rowRange(9, source.rows - 8).colRange(0, 9);
-    std::cout << right.size() << std::endl;
-    std::cout << middle.size() << std::endl;
-    std::cout << left.size() << std::endl;
+    // std::cout << right.size() << std::endl;
+    // std::cout << middle.size() << std::endl;
+    // std::cout << left.size() << std::endl;
 
     int moveUpwards = true;
     for (int i = right.cols / 2 - 1; i >= 0; --i) {
@@ -2858,13 +2857,23 @@ std::string extractCodeBlocks(const Mat& source, QRCodeEncoder::CorrectionLevel 
         moveUpwards = !moveUpwards;
     }
 
-    std::cout << bitstream.size() << std::endl;
-    for (int k = 4; k < bitstream.size(); ++k) {
-        std::cout << 1 - (int)bitstream[k] << " ";
-        if ((k - 4) % 10 == 9)
-            std::cout << std::endl;
-
+    // invert
+    for (int i = 0; i < bitstream.size(); ++i) {
+        bitstream[i] = 1 - bitstream[i];
     }
+
+    // std::cout << bitstream.size() << std::endl;
+    // for (int k = 4; k < bitstream.size(); ++k) {
+    //     std::cout << (int)bitstream[k] << " ";
+    //     if ((k - 4) % 10 == 9)
+    //         std::cout << std::endl;
+    // }
+    for (int k = 0; k < bitstream.size(); ++k) {
+        std::cout << (int)bitstream[k] << " ";
+        if ((k + 1) % 8 == 0)
+            std::cout << std::endl;
+    }
+
     std::cout << std::endl;
 
     // Determine mode
@@ -2885,8 +2894,7 @@ std::string extractCodeBlocks(const Mat& source, QRCodeEncoder::CorrectionLevel 
         }
         uint8_t remainingDigits = numDigits % 3;
         if (remainingDigits) {
-            int len = version_info_database[1].ecc[level].data_codewords_in_G1;
-            int triple = binToDec(&bitstream[offset], len * 8 - offset - 1);
+            int triple = binToDec(&bitstream[offset], remainingDigits == 1 ? 4 : 7);
             if (remainingDigits == 2)
                 result += '0' + (triple / 10) % 10;
             result += '0' + triple % 10;
@@ -2901,8 +2909,7 @@ std::string extractCodeBlocks(const Mat& source, QRCodeEncoder::CorrectionLevel 
             offset += 11;
         }
         if (num % 2) {
-            int len = version_info_database[1].ecc[level].data_codewords_in_G1;
-            int value = binToDec(&bitstream[offset], len * 8 - offset - 1);
+            int value = binToDec(&bitstream[offset], 6 /*6bit*/);
             result += mapSymbol(value);
         }
     } else if (mode == QRCodeEncoder::EncodeMode::MODE_BYTE) {
