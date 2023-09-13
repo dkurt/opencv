@@ -2783,10 +2783,89 @@ static inline char mapSymbol(int v)
     return map[v];
 }
 
+// void solveLinear(const Mat& A, const Mat& b, std::vector<double>& solutions) {
+//     double det = cv::determinant(A);
+//     solutions.resize(A.rows);
+//     Mat tmp;
 
-std::string extractCodeBlocks(const Mat& source, QRCodeEncoder::CorrectionLevel level) {
-    CV_Assert(source.rows == 21);
-    CV_Assert(source.cols == 21);
+//     hconcat(b, A.colRange(1, A.cols), tmp);
+//     solutions[0] = cv::determinant(tmp) / det;
+
+//     hconcat(A.colRange(0, A.cols - 1), b, tmp);
+//     solutions[solutions.size() - 1] = cv::determinant(tmp) / det;
+
+//     for (int i = 1; i < solutions.size() - 1; ++i) {
+//         hconcat(std::vector<Mat>{A.colRange(0, i), b, A.colRange(i + 1, A.cols)}, tmp);
+//         solutions[i] = cv::determinant(tmp) / det;
+//     }
+// }
+
+// void errorCorrection(std::vector<uint8_t>& codewords) {
+//     // Compute syndromes
+//     std::vector<uint32_t> syndromes(8, 0);
+//     for (size_t i = 0; i < syndromes.size(); ++i) {
+//         for (size_t j = 0; j < codewords.size(); ++j) {
+//             syndromes[i] += codewords[j] * (1 << j * i % 8);
+//         }
+//         std::cout << syndromes[i] << std::endl;
+//     }
+
+//     // Find error positions by solving a system of linear equations
+//     Mat_<double> A({4, 4}, {
+//         syndromes[0], -(double)syndromes[1], syndromes[2], -(double)syndromes[3],
+//         syndromes[1], -(double)syndromes[2], syndromes[3], -(double)syndromes[4],
+//         syndromes[2], -(double)syndromes[3], syndromes[4], -(double)syndromes[5],
+//         syndromes[3], -(double)syndromes[4], syndromes[5], -(double)syndromes[6],
+//     });
+//     std::cout << A << std::endl;
+//     Mat_<double> b({4, 1}, {-(double)syndromes[4], -(double)syndromes[5], -(double)syndromes[6], -(double)syndromes[7]});
+
+//     std::vector<double> sigmas;
+//     solveLinear(A, b, sigmas);
+//     for (int i = 0; i < sigmas.size(); ++i) {
+//         std::cout << "sigma " << sigmas[i] << std::endl;
+//     }
+
+//     //
+//     for (int i = 0; i < 256; ++i) {
+//         double val = sigmas[0];
+//         uint32_t prod = i;
+//         for (int j = 1; j < sigmas.size(); ++j) {
+//             val += sigmas[j] * (prod % 256);
+//             prod *= i;
+//         }
+//         val += (prod % 256);
+//         if (abs(val) < 1e-1)
+//             std::cout << i << " " << val << std::endl;
+//     }
+// }
+
+// void getCodewords(uint8_t* bitstream, size_t num, std::vector<uint8_t>& codewords) {
+//     codewords.resize(num, 0);
+//     size_t offset = 0;
+//     std::cout << "codewords" << std::endl;
+//     for (size_t i = 0; i < num; ++i) {
+//         codewords[i] = bitstream[offset + 7];
+//         for (size_t j = 7; j >= 1; --j) {
+//             codewords[i] |= bitstream[offset] << j;
+//             offset += 1;
+//         }
+//         std::cout << (int)codewords[i] << " ";
+//         offset += 1;
+//     }
+//         std::cout << std::endl;
+// }
+
+std::string extractCodeBlocks(const Mat& _source, QRCodeEncoder::CorrectionLevel level, const int version) {
+    static const uint8_t INVALID_REGION_VALUE = 110;
+
+    vector<pair<int, int>> alignmentPositions = getAlignmentCoordinates(version);
+
+    Mat source = _source.clone();
+    for (const auto& ctr : alignmentPositions) {
+        Mat area = source({ctr.first - 2, ctr.first + 3}, {ctr.second - 2, ctr.second + 3});
+        area.setTo(INVALID_REGION_VALUE);
+    }
 
     // const uint8_t* data = source.ptr<const uint8_t>();
     // int step = source.step;
@@ -2808,11 +2887,15 @@ std::string extractCodeBlocks(const Mat& source, QRCodeEncoder::CorrectionLevel 
         Mat col1 = right.col(i * 2 + 1);
         for (int j = 0; j < right.rows; ++j) {
             if (moveUpwards) {
-                bitstream.push_back(col1.at<uint8_t>(right.rows - 1 - j));
-                bitstream.push_back(col0.at<uint8_t>(right.rows - 1 - j));
+                if (col1.at<uint8_t>(right.rows - 1 - j) != INVALID_REGION_VALUE)
+                    bitstream.push_back(col1.at<uint8_t>(right.rows - 1 - j));
+                if (col0.at<uint8_t>(right.rows - 1 - j) != INVALID_REGION_VALUE)
+                    bitstream.push_back(col0.at<uint8_t>(right.rows - 1 - j));
             } else {
-                bitstream.push_back(col1.at<uint8_t>(j));
-                bitstream.push_back(col0.at<uint8_t>(j));
+                if (col1.at<uint8_t>(j) != INVALID_REGION_VALUE)
+                    bitstream.push_back(col1.at<uint8_t>(j));
+                if (col0.at<uint8_t>(j) != INVALID_REGION_VALUE)
+                    bitstream.push_back(col0.at<uint8_t>(j));
             }
         }
         moveUpwards = !moveUpwards;
@@ -2826,13 +2909,18 @@ std::string extractCodeBlocks(const Mat& source, QRCodeEncoder::CorrectionLevel 
             if (moveUpwards) {
                 if (middle.rows - 1 - j == 6)
                     continue;
-                bitstream.push_back(col1.at<uint8_t>(middle.rows - 1 - j));
-                bitstream.push_back(col0.at<uint8_t>(middle.rows - 1 - j));
+
+                if (col1.at<uint8_t>(middle.rows - 1 - j) != INVALID_REGION_VALUE)
+                    bitstream.push_back(col1.at<uint8_t>(middle.rows - 1 - j));
+                if (col0.at<uint8_t>(middle.rows - 1 - j) != INVALID_REGION_VALUE)
+                    bitstream.push_back(col0.at<uint8_t>(middle.rows - 1 - j));
             } else {
                 if (j == 6)
                     continue;
-                bitstream.push_back(col1.at<uint8_t>(j));
-                bitstream.push_back(col0.at<uint8_t>(j));
+                if (col1.at<uint8_t>(j) != INVALID_REGION_VALUE)
+                    bitstream.push_back(col1.at<uint8_t>(j));
+                if (col0.at<uint8_t>(j) != INVALID_REGION_VALUE)
+                    bitstream.push_back(col0.at<uint8_t>(j));
             }
         }
         moveUpwards = !moveUpwards;
@@ -2847,15 +2935,23 @@ std::string extractCodeBlocks(const Mat& source, QRCodeEncoder::CorrectionLevel 
         Mat col1 = left.col(i);
         for (int j = 0; j < left.rows; ++j) {
             if (moveUpwards) {
-                bitstream.push_back(col1.at<uint8_t>(left.rows - 1 - j));
-                bitstream.push_back(col0.at<uint8_t>(left.rows - 1 - j));
+                if (col1.at<uint8_t>(left.rows - 1 - j) != INVALID_REGION_VALUE)
+                    bitstream.push_back(col1.at<uint8_t>(left.rows - 1 - j));
+                if (col0.at<uint8_t>(left.rows - 1 - j) != INVALID_REGION_VALUE)
+                    bitstream.push_back(col0.at<uint8_t>(left.rows - 1 - j));
             } else {
-                bitstream.push_back(col1.at<uint8_t>(j));
-                bitstream.push_back(col0.at<uint8_t>(j));
+                if (col1.at<uint8_t>(j) != INVALID_REGION_VALUE)
+                    bitstream.push_back(col1.at<uint8_t>(j));
+                if (col0.at<uint8_t>(j) != INVALID_REGION_VALUE)
+                    bitstream.push_back(col0.at<uint8_t>(j));
             }
         }
         moveUpwards = !moveUpwards;
     }
+
+    // TODO: need to know number of remaining bits
+    // CV_CheckEQ((int)bitstream.size(), 8 * version_info_database[2].total_codewords,
+    //            "QR code decoding bitstream");
 
     // invert
     for (int i = 0; i < bitstream.size(); ++i) {
@@ -2868,7 +2964,7 @@ std::string extractCodeBlocks(const Mat& source, QRCodeEncoder::CorrectionLevel 
     //     if ((k - 4) % 10 == 9)
     //         std::cout << std::endl;
     // }
-    for (int k = 0; k < bitstream.size(); ++k) {
+    for (size_t k = 0; k < bitstream.size(); ++k) {
         std::cout << (int)bitstream[k] << " ";
         if ((k + 1) % 8 == 0)
             std::cout << std::endl;
@@ -2879,6 +2975,11 @@ std::string extractCodeBlocks(const Mat& source, QRCodeEncoder::CorrectionLevel 
     // Determine mode
     QRCodeEncoder::EncodeMode mode = static_cast<QRCodeEncoder::EncodeMode>(binToDec(&bitstream[0], 4));
     printBinary(mode);
+
+    // std::vector<uint8_t> codewords;
+    // CV_Assert(bitstream.size() == 26*8);
+    // getCodewords(bitstream.data(), 26, codewords);
+    // errorCorrection(codewords);
 
     // Decode depends on the mode
     std::string result;
@@ -2919,16 +3020,22 @@ std::string extractCodeBlocks(const Mat& source, QRCodeEncoder::CorrectionLevel 
             result += binToDec(&bitstream[offset], 8);
         }
     } else {
-        CV_Error(Error::StsNotImplemented, "mode");
+        // MODE_AUTO              = -1,
+        // MODE_ECI               = 7, // 0b0111
+        // MODE_KANJI             = 8, // 0b1000
+        // MODE_STRUCTURED_APPEND = 3  // 0b0011
+        CV_Error(Error::StsNotImplemented, format("mode %d", mode));
     }
     std::cout << result << std::endl;
     return result;
 }
 
 std::string decode(Mat& straight) {
-    CV_Assert(straight.rows == 21);
-    CV_Assert(straight.cols == 21);
+    CV_Assert(straight.rows == straight.cols);
     straight /= 255;
+    const int version = (straight.rows - 21) / 4 + 1;
+
+    CV_LOG_INFO(NULL, "QR decode: version " << version);
 
     // Decode format info
     uint16_t format_info = 0;
@@ -2956,19 +3063,12 @@ std::string decode(Mat& straight) {
     printBinary(level);
     printBinary(data_mask_pattern);
 
-    std::cout << "total_codewords " << version_info_database[1].total_codewords << std::endl;
-    std::cout << "ecc_codewords " << version_info_database[1].ecc[level].ecc_codewords << std::endl;
-    std::cout << "num_blocks_in_G1 " << version_info_database[1].ecc[level].num_blocks_in_G1 << std::endl;
-    std::cout << "data_codewords_in_G1 " << version_info_database[1].ecc[level].data_codewords_in_G1 << std::endl;
-    std::cout << "num_blocks_in_G2 " << version_info_database[1].ecc[level].num_blocks_in_G2 << std::endl;
-    std::cout << "data_codewords_in_G2 " << version_info_database[1].ecc[level].data_codewords_in_G2 << std::endl;
-
     // Generate data mask
-    Mat mask = getMask(21, data_mask_pattern);
+    Mat mask = getMask(straight.rows, data_mask_pattern);
     Mat masked;
     bitwise_xor(straight, mask, masked);
 
-    return extractCodeBlocks(masked, level);
+    return extractCodeBlocks(masked, level, version);
 }
 
 bool QRDecode::decodingProcess()

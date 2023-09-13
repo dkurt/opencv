@@ -118,9 +118,7 @@ TEST(Objdetect_QRCode_Encode, generate_test_data)
         }
 
         std::string decoded_info = "";
-#ifdef HAVE_QUIRC
         EXPECT_TRUE(decodeQRCode(resized_src, corners, decoded_info, straight_barcode)) << "The QR code cannot be decoded: " << image_path;
-#endif
         file_config << "info" << decoded_info;
         file_config << "}";
     }
@@ -224,7 +222,7 @@ TEST(Objdetect_QRCode_Encode_Decode, regression)
 {
     const std::string root = "qrcode/decode_encode";
     const int min_version = 1;
-    const int test_max_version = 1;
+    const int test_max_version = 2;
     const int max_ec_level = 3;
     const std::string dataset_config = findDataFile(root + "/" + "symbol_sets.json");
     const std::string version_config = findDataFile(root + "/" + "capacity.json");
@@ -308,7 +306,7 @@ TEST(Objdetect_QRCode_Encode_Decode, regression)
                 }
 
                 Mat straight_barcode;
-                imwrite("src.png", resized_src);
+                imwrite("src.png", qrcode);
                 std::string output_info = QRCodeDetector().decode(resized_src, corners, straight_barcode);
                 EXPECT_FALSE(output_info.empty())
                     << "The generated QRcode cannot be decoded." << " Mode: " << (int)mode
@@ -356,12 +354,10 @@ TEST(Objdetect_QRCode_Encode_Kanji, regression)
             corners[j].y = corners[j].y * height_ratio;
         }
 
-#ifdef HAVE_QUIRC
         Mat straight_barcode;
         std::string decoded_info = QRCodeDetector().decode(resized_src, corners, straight_barcode);
         EXPECT_FALSE(decoded_info.empty()) << "The generated QRcode cannot be decoded.";
         EXPECT_EQ(input_info, decoded_info);
-#endif
     }
 }
 
@@ -423,21 +419,15 @@ TEST(Objdetect_QRCode_Encode_Decode_Structured_Append, DISABLED_regression)
                     corners[m].y = corners[m].y * height_ratio;
                 }
 
-#ifdef HAVE_QUIRC
                 Mat straight_barcode;
                 std::string decoded_info = QRCodeDetector().decode(resized_src, corners, straight_barcode);
                 EXPECT_FALSE(decoded_info.empty())
                     << "The generated QRcode cannot be decoded." << " Mode: " << modes[i]
                     << " structures number: " << k << "/" << j;
                 output_info += decoded_info;
-#endif
             }
-#ifdef HAVE_QUIRC
             EXPECT_EQ(input_info, output_info) << "The generated QRcode is not same as test data." << " Mode: " << mode <<
                                                   " structures number: " << j;
-#else
-            std::cout << "Mode=" << mode << ": Unable to verify generated QR codes - QUIRC is disabled" << std::endl;
-#endif
         }
     }
 }
