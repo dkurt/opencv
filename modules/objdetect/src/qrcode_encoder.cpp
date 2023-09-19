@@ -144,6 +144,8 @@ static int mapSymbol(char c)
     return -1;
 }
 
+static void maskData(const Mat& original, const int mask_type_num, Mat &masked);
+
 QRCodeEncoder::QRCodeEncoder()
 {
     // nothing
@@ -223,7 +225,6 @@ protected:
     void formatGenerate(const int mask_type_num, vector<uint8_t> &format_array);
     void versionInfoGenerate(const int version_level_num, vector<uint8_t> &version_array);
     void fillReserved(const vector<uint8_t> &format_array, Mat &masked);
-    void maskData(const int mask_type_num, Mat &masked);
     void findAutoMaskType();
     bool estimateVersion(const int input_length, vector<int> &possible_version);
     int versionAuto(const std::string &input_str);
@@ -790,7 +791,7 @@ void QRCodeEncoderImpl::findAutoMaskType()
     {
         Mat test_result = masked_data.clone();
         vector<uint8_t> test_format = format;
-        maskData(cur_type, test_result);
+        maskData(original, cur_type, test_result);
         formatGenerate(cur_type, test_format);
         fillReserved(test_format, test_result);
         int continued_num = 0;
@@ -902,8 +903,9 @@ void QRCodeEncoderImpl::findAutoMaskType()
     mask_type = best_index;
 }
 
-void QRCodeEncoderImpl::maskData(const int mask_type_num, Mat& masked)
+void maskData(const Mat& original, const int mask_type_num, Mat& masked)
 {
+    int version_size = original.rows;
     for (int i = 0; i < version_size; i++)
     {
         for (int j = 0; j < version_size; j++)
@@ -1207,7 +1209,7 @@ void QRCodeEncoderImpl::structureFinalMessage()
     writeReservedArea();
     writeData();
     findAutoMaskType();
-    maskData(mask_type, masked_data);
+    maskData(original, mask_type, masked_data);
     formatGenerate(mask_type, format);
     versionInfoGenerate(version_level, version_reserved);
     fillReserved(format, masked_data);
@@ -1267,49 +1269,10 @@ Ptr<QRCodeEncoder> QRCodeEncoder::create(const QRCodeEncoder::Params& parameters
 
 class QRCodeDecoder {
 private:
-    static void decodeFormatInfo(const Mat& straight, int& mask, QRCodeEncoder::CorrectionLevel& level) {
-        int format_info = 0;
-        for (int i = 0; i < 6; ++i)
-            format_info |= straight.at<uint8_t>(i, 8) << i;
-
-        format_info |= straight.at<uint8_t>(7, 8) << 6;
-        format_info |= straight.at<uint8_t>(8, 8) << 7;
-        format_info |= straight.at<uint8_t>(8, 7) << 8;
-
-        for (int i = 9; i < 15; ++i)
-            format_info |= straight.at<uint8_t>(8, 14 - i) << i;
-
-        int mask_pattern = 0b101010000010010;
-        format_info = ~format_info ^ mask_pattern;
-
-        switch((format_info >> 13) & 0b11) {
-            case 0: level = QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_M; break;
-            case 1: level = QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_L; break;
-            case 2: level = QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_H; break;
-            case 3: level = QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_Q; break;
-        };
-        mask = (format_info >> 10) & 0b111;
-    }
+    static void decodeFormatInfo(const Mat& straight, int& mask, QRCodeEncoder::CorrectionLevel& level);
 
 public:
-    void run(Mat& straight, String& decoded_info) {
-        CV_Assert(straight.rows == straight.cols);
-        straight /= 255;
-        version = (straight.rows - 21) / 4 + 1;
-
-        CV_LOG_INFO(NULL, "QR decode: version " << version);
-
-        // Decode format info
-        int maskPattern;
-        decodeFormatInfo(straight, maskPattern, level);
-
-        // Generate data mask
-        Mat mask = getMask(straight.rows, maskPattern);
-        Mat masked;
-        bitwise_xor(straight, mask, masked);
-
-        decoded_info = extractCodeBlocks(masked);
-    }
+    void run(Mat& straight, String& decoded_info);
 
     // TODO: reuse
     static inline std::vector<std::pair<int, int>> getAlignmentCoordinates(int version) {
@@ -1469,7 +1432,7 @@ public:
             int idx = 0;
         } bs;
         getCodewords(bitstream.data(), version_info_database[version].total_codewords, bs.codewords);
-        errorCorrection(bs.codewords, version, level);
+        errorCorrection(bs.codewords);
 
         // Determine mode
         QRCodeEncoder::EncodeMode mode = static_cast<QRCodeEncoder::EncodeMode>(bs.next(4));
@@ -1587,97 +1550,7 @@ private:
     //     }
     // }
 
-    static void errorCorrection(std::vector<uint8_t>& codewords, int version, int level) {
-        int numSyndromes = version_info_database[version].ecc[level].ecc_codewords;
-        if (version == 3 && level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_L)
-            numSyndromes -= 1;
-        else if (version == 2 && level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_L)
-            numSyndromes -= 2;
-        else if (version == 1) {
-            if (level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_L)
-                numSyndromes -= 3;
-            else if (level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_M)
-                numSyndromes -= 2;
-            else
-                numSyndromes -= 1;
-        }
-
-        CV_Assert(numSyndromes % 2 == 0);
-
-        // Compute syndromes
-        // TODO: replace to gfPolyMul
-        std::vector<uint8_t> syndromes(numSyndromes, codewords[0]);
-        for (size_t i = 0; i < syndromes.size(); ++i) {
-            for (size_t j = 1; j < codewords.size(); ++j) {
-                syndromes[i] = gfMul(syndromes[i], (1 << i % 8)) ^ codewords[j];
-            }
-            std::cout << "syndromes[" << i << "] " << (int)syndromes[i] << std::endl;
-        }
-
-        // int numPoses = numSyndromes / 2;
-
-        // Find error positions by solving a system of linear equations
-        // Mat A(numPoses, numPoses, CV_64F);
-        // Mat b(numPoses, 1, CV_64F);
-        // for (int i = 0; i < numPoses; ++i) {
-        //     b.at<double>(i) = -(double)syndromes[numPoses + i];
-        //     for (int j = 0; j < numPoses; ++j) {
-        //         A.at<double>(i, j) = (j % 2 ? -1 : 1) * (double)syndromes[i + j];
-        //     }
-        // }
-        // std::cout << A << std::endl;
-        // std::cout << b << std::endl;
-
-        // int val1, val2;
-        // bool solved = false;
-        // for (int a = 0; a < 256; ++a) {
-        //     for (int b = 0; b < 256; ++b) {
-        //         val1 = syndromes[0] * a - syndromes[1] * b;
-        //         val2 = syndromes[1] * a - syndromes[2] * b;
-        //         while (val1 < 0) {
-        //             val1 += 256;
-        //         }
-        //         while (val2 < 0) {
-        //             val2 += 256;
-        //         }
-        //         val1 %= 256;
-        //         val2 %= 256;
-        //         if (val1 == 256 - syndromes[2] && val2 == 256 - syndromes[3]) {
-        //             std::cout << "root " << val1 << " " << val2 << std::endl;
-        //             solved = true;
-        //             break;
-        //         }
-        //     }
-        //     if (solved)
-        //         break;
-        // }
-        // std::vector<int> digits;
-        // for (int a = 0; a < 256; ++a) {
-        //     if ((val1 + val2 * a) % 256 == 0)
-        //         digits.push_back(a);
-        // }
-        // for (int d : digits) {
-        //     std::cout << "root " << d << std::endl;
-        // }
-
-        // // std::vector<double> sigmas;
-        // // solveLinear(A, b, sigmas);
-        // // for (size_t i = 0; i < sigmas.size(); ++i) {
-        // //     std::cout << "sigma " << sigmas[i] << std::endl;
-        // // }
-
-        // // for (int i = 0; i < 256; ++i) {
-        // //     double val = sigmas[0];
-        // //     uint32_t prod = i;
-        // //     for (size_t j = 1; j < sigmas.size(); ++j) {
-        // //         val += sigmas[j] * (prod % 256);
-        // //         prod *= i;
-        // //     }
-        // //     val += (prod % 256);
-        // //     if (abs(val) < 1e-1)
-        // //         std::cout << i << " " << val << std::endl;
-        // // }
-    }
+    void errorCorrection(std::vector<uint8_t>& codewords);
 
     static void getCodewords(uint8_t* bitstream, size_t num, std::vector<uint8_t>& codewords) {
         codewords.resize(num, 0);
@@ -1697,6 +1570,148 @@ void QRCodeEncoder::decode(InputArray qrcode, String& decoded_info) {
     QRCodeDecoder decoder;
     Mat straight = qrcode.getMat();
     decoder.run(straight, decoded_info);
+}
+
+void QRCodeDecoder::decodeFormatInfo(const Mat& straight, int& mask, QRCodeEncoder::CorrectionLevel& level) {
+    int format_info = 0;
+    for (int i = 0; i < 6; ++i)
+        format_info |= straight.at<uint8_t>(i, 8) << i;
+
+    format_info |= straight.at<uint8_t>(7, 8) << 6;
+    format_info |= straight.at<uint8_t>(8, 8) << 7;
+    format_info |= straight.at<uint8_t>(8, 7) << 8;
+
+    for (int i = 9; i < 15; ++i)
+        format_info |= straight.at<uint8_t>(8, 14 - i) << i;
+
+    int mask_pattern = 0b101010000010010;
+    format_info = ~format_info ^ mask_pattern;
+
+    switch((format_info >> 13) & 0b11) {
+        case 0: level = QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_M; break;
+        case 1: level = QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_L; break;
+        case 2: level = QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_H; break;
+        case 3: level = QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_Q; break;
+    };
+    mask = (format_info >> 10) & 0b111;
+}
+
+void QRCodeDecoder::run(Mat& straight, String& decoded_info) {
+    CV_Assert(straight.rows == straight.cols);
+    straight /= 255;  // TODO: work with raw data
+    version = (straight.rows - 21) / 4 + 1;
+
+    if (version >= 7)
+        CV_Error(Error::StsNotImplemented, format("Version %d", version));
+
+    CV_LOG_INFO(NULL, "QR decode: version " << version);
+
+    // Decode format info
+    int maskPattern;
+    decodeFormatInfo(straight, maskPattern, level);
+
+    // Generate data mask
+    // TODO: avoid extra Mat allocation
+    Mat mask = getMask(straight.rows, maskPattern);
+    Mat masked;
+    bitwise_xor(straight, mask, masked);
+
+    decoded_info = extractCodeBlocks(masked);
+}
+
+void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
+    int numSyndromes = version_info_database[version].ecc[level].ecc_codewords;
+    if (version == 3 && level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_L)
+        numSyndromes -= 1;
+    else if (version == 2 && level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_L)
+        numSyndromes -= 2;
+    else if (version == 1) {
+        if (level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_L)
+            numSyndromes -= 3;
+        else if (level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_M)
+            numSyndromes -= 2;
+        else
+            numSyndromes -= 1;
+    }
+
+    CV_Assert(numSyndromes % 2 == 0);
+
+    // Compute syndromes
+    bool hasError = false;
+    std::vector<uint8_t> syndromes(numSyndromes, codewords[0]);
+    for (size_t i = 0; i < syndromes.size(); ++i) {
+        for (size_t j = 1; j < codewords.size(); ++j) {
+            syndromes[i] = gfMul(syndromes[i], (1 << i % 8)) ^ codewords[j];
+        }
+        hasError |= syndromes[i];
+    }
+    if (hasError) {
+        CV_Error(Error::StsNotImplemented, "Error correction");
+    }
+
+    // int numPoses = numSyndromes / 2;
+
+    // Find error positions by solving a system of linear equations
+    // Mat A(numPoses, numPoses, CV_64F);
+    // Mat b(numPoses, 1, CV_64F);
+    // for (int i = 0; i < numPoses; ++i) {
+    //     b.at<double>(i) = -(double)syndromes[numPoses + i];
+    //     for (int j = 0; j < numPoses; ++j) {
+    //         A.at<double>(i, j) = (j % 2 ? -1 : 1) * (double)syndromes[i + j];
+    //     }
+    // }
+    // std::cout << A << std::endl;
+    // std::cout << b << std::endl;
+
+    // int val1, val2;
+    // bool solved = false;
+    // for (int a = 0; a < 256; ++a) {
+    //     for (int b = 0; b < 256; ++b) {
+    //         val1 = syndromes[0] * a - syndromes[1] * b;
+    //         val2 = syndromes[1] * a - syndromes[2] * b;
+    //         while (val1 < 0) {
+    //             val1 += 256;
+    //         }
+    //         while (val2 < 0) {
+    //             val2 += 256;
+    //         }
+    //         val1 %= 256;
+    //         val2 %= 256;
+    //         if (val1 == 256 - syndromes[2] && val2 == 256 - syndromes[3]) {
+    //             std::cout << "root " << val1 << " " << val2 << std::endl;
+    //             solved = true;
+    //             break;
+    //         }
+    //     }
+    //     if (solved)
+    //         break;
+    // }
+    // std::vector<int> digits;
+    // for (int a = 0; a < 256; ++a) {
+    //     if ((val1 + val2 * a) % 256 == 0)
+    //         digits.push_back(a);
+    // }
+    // for (int d : digits) {
+    //     std::cout << "root " << d << std::endl;
+    // }
+
+    // // std::vector<double> sigmas;
+    // // solveLinear(A, b, sigmas);
+    // // for (size_t i = 0; i < sigmas.size(); ++i) {
+    // //     std::cout << "sigma " << sigmas[i] << std::endl;
+    // // }
+
+    // // for (int i = 0; i < 256; ++i) {
+    // //     double val = sigmas[0];
+    // //     uint32_t prod = i;
+    // //     for (size_t j = 1; j < sigmas.size(); ++j) {
+    // //         val += sigmas[j] * (prod % 256);
+    // //         prod *= i;
+    // //     }
+    // //     val += (prod % 256);
+    // //     if (abs(val) < 1e-1)
+    // //         std::cout << i << " " << val << std::endl;
+    // // }
 }
 
 }

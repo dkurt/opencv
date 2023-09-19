@@ -238,11 +238,11 @@ TEST(Objdetect_QRCode_Encode_Decode, regression)
     size_t mode_count = static_cast<size_t>(mode_list.size());
     ASSERT_GT(mode_count, 0u) << "Can't find validation data entries in 'test_images': " << dataset_config;
 
-    const int testing_modes = 1;
+    const int testing_modes = 3;
     QRCodeEncoder::EncodeMode modes[testing_modes] = {
         QRCodeEncoder::MODE_NUMERIC,
-        // QRCodeEncoder::MODE_ALPHANUMERIC,
-        // QRCodeEncoder::MODE_BYTE
+        QRCodeEncoder::MODE_ALPHANUMERIC,
+        QRCodeEncoder::MODE_BYTE
     };
 
     for (int i = 0; i < testing_modes; i++)
