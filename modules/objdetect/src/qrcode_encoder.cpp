@@ -1268,9 +1268,6 @@ Ptr<QRCodeEncoder> QRCodeEncoder::create(const QRCodeEncoder::Params& parameters
 // QRCodeDecoder
 
 class QRCodeDecoder {
-private:
-    static void decodeFormatInfo(const Mat& straight, int& mask, QRCodeEncoder::CorrectionLevel& level);
-
 public:
     void run(Mat& straight, String& decoded_info);
 
@@ -1298,193 +1295,30 @@ public:
         return {std::make_pair(coordinates.back(), coordinates.back())};
     }
 
-    std::string extractCodeBlocks(const Mat& _source) {
-        auto alignmentPositions = getAlignmentCoordinates(version);
-
-        Mat source = _source.clone();
-        for (const auto& ctr : alignmentPositions) {
-            Mat area = source({ctr.first - 2, ctr.first + 3}, {ctr.second - 2, ctr.second + 3});
-            area.setTo(INVALID_REGION_VALUE);
-        }
-
-        std::vector<uint8_t> bitstream;
-        Mat right = source.rowRange(9, source.rows).colRange(source.cols - 8, source.cols).clone();
-        Mat middle = source.colRange(9, source.cols - 8);
-        Mat left = source.rowRange(9, source.rows - 8).colRange(0, 9);
-
-        int moveUpwards = true;
-        for (int i = right.cols / 2 - 1; i >= 0; --i) {
-            Mat col0 = right.col(i * 2);
-            Mat col1 = right.col(i * 2 + 1);
-            for (int j = 0; j < right.rows; ++j) {
-                if (moveUpwards) {
-                    if (col1.at<uint8_t>(right.rows - 1 - j) != INVALID_REGION_VALUE)
-                        bitstream.push_back(col1.at<uint8_t>(right.rows - 1 - j));
-                    if (col0.at<uint8_t>(right.rows - 1 - j) != INVALID_REGION_VALUE)
-                        bitstream.push_back(col0.at<uint8_t>(right.rows - 1 - j));
-                } else {
-                    if (col1.at<uint8_t>(j) != INVALID_REGION_VALUE)
-                        bitstream.push_back(col1.at<uint8_t>(j));
-                    if (col0.at<uint8_t>(j) != INVALID_REGION_VALUE)
-                        bitstream.push_back(col0.at<uint8_t>(j));
-                }
-            }
-            moveUpwards = !moveUpwards;
-        }
-
-        moveUpwards = true;
-        for (int i = middle.cols / 2 - 1; i >= 0; --i) {
-            Mat col0 = middle.col(i * 2);
-            Mat col1 = middle.col(i * 2 + 1);
-            for (int j = 0; j < middle.rows; ++j) {
-                if (moveUpwards) {
-                    if (middle.rows - 1 - j == 6)
-                        continue;
-
-                    if (col1.at<uint8_t>(middle.rows - 1 - j) != INVALID_REGION_VALUE)
-                        bitstream.push_back(col1.at<uint8_t>(middle.rows - 1 - j));
-                    if (col0.at<uint8_t>(middle.rows - 1 - j) != INVALID_REGION_VALUE)
-                        bitstream.push_back(col0.at<uint8_t>(middle.rows - 1 - j));
-                } else {
-                    if (j == 6)
-                        continue;
-                    if (col1.at<uint8_t>(j) != INVALID_REGION_VALUE)
-                        bitstream.push_back(col1.at<uint8_t>(j));
-                    if (col0.at<uint8_t>(j) != INVALID_REGION_VALUE)
-                        bitstream.push_back(col0.at<uint8_t>(j));
-                }
-            }
-            moveUpwards = !moveUpwards;
-        }
-
-        moveUpwards = true;
-        for (int i = left.cols - 1; i >= 0; i -= 2) {
-            if (i == 6) {
-                i -= 1;
-            }
-            Mat col0 = left.col(i - 1);
-            Mat col1 = left.col(i);
-            for (int j = 0; j < left.rows; ++j) {
-                if (moveUpwards) {
-                    if (col1.at<uint8_t>(left.rows - 1 - j) != INVALID_REGION_VALUE)
-                        bitstream.push_back(col1.at<uint8_t>(left.rows - 1 - j));
-                    if (col0.at<uint8_t>(left.rows - 1 - j) != INVALID_REGION_VALUE)
-                        bitstream.push_back(col0.at<uint8_t>(left.rows - 1 - j));
-                } else {
-                    if (col1.at<uint8_t>(j) != INVALID_REGION_VALUE)
-                        bitstream.push_back(col1.at<uint8_t>(j));
-                    if (col0.at<uint8_t>(j) != INVALID_REGION_VALUE)
-                        bitstream.push_back(col0.at<uint8_t>(j));
-                }
-            }
-            moveUpwards = !moveUpwards;
-        }
-
-        int remainingBits = 0;
-        if (version >= 2 && version <= 6)
-            remainingBits = 7;
-        else if ((version >= 14 && version <= 20) || (version >= 28 && version <= 34))
-            remainingBits = 3;
-        else if (version >= 21 && version <= 27)
-            remainingBits = 4;
-        CV_CheckEQ((int)bitstream.size(), remainingBits + 8 * version_info_database[version].total_codewords,
-                "QR code decoding bitstream");
-
-        // invert
-        for (size_t i = 0; i < bitstream.size(); ++i) {
-            bitstream[i] = 1 - bitstream[i];
-        }
-
-        // std::cout << bitstream.size() << std::endl;
-        // for (int k = 4; k < bitstream.size(); ++k) {
-        //     std::cout << (int)bitstream[k] << " ";
-        //     if ((k - 4) % 10 == 9)
-        //         std::cout << std::endl;
-        // }
-        for (size_t k = 0; k < bitstream.size(); ++k) {
-            std::cout << (int)bitstream[k] << " ";
-            if ((k + 1) % 8 == 0)
-                std::cout << std::endl;
-        }
-
-        std::cout << std::endl;
-
-        // Apply error correction, if needed
-        struct Bitstream {
-
-            int next(int bits) {
-                int val = 0;
-                while (bits >= actualBits) {
-                    val |= codewords[idx++] << (bits - actualBits);
-                    bits -= actualBits;
-                    actualBits = 8;
-                }
-                if (bits) {
-                    val |= codewords[idx] >> (actualBits - bits);
-                    actualBits -= bits;
-                    codewords[idx] &= 255 >> (8 - actualBits);
-                }
-                return val;
-            }
-
-            std::vector<uint8_t> codewords;
-            int actualBits = 8;
-            int idx = 0;
-        } bs;
-        getCodewords(bitstream.data(), version_info_database[version].total_codewords, bs.codewords);
-        errorCorrection(bs.codewords);
-
-        // Determine mode
-        QRCodeEncoder::EncodeMode mode = static_cast<QRCodeEncoder::EncodeMode>(bs.next(4));
-        std::cout << "mode ";
-        printBinary(mode);
-
-        // Decode depends on the mode
-        std::string result;
-        if (mode == QRCodeEncoder::EncodeMode::MODE_NUMERIC) {
-            int numDigits = bs.next(10);
-            for (int i = 0; i < numDigits / 3; ++i) {
-                int triple = bs.next(10);
-                result += '0' + triple / 100;
-                result += '0' + (triple / 10) % 10;
-                result += '0' + triple % 10;
-            }
-            int remainingDigits = numDigits % 3;
-            if (remainingDigits) {
-                int triple = bs.next(remainingDigits == 1 ? 4 : 7);
-                if (remainingDigits == 2)
-                    result += '0' + (triple / 10) % 10;
-                result += '0' + triple % 10;
-            }
-        } else if (mode == QRCodeEncoder::EncodeMode::MODE_ALPHANUMERIC) {
-            int num = bs.next(9);
-            for (int i = 0; i < num / 2; ++i) {
-                int tuple = bs.next(11);
-                result += mapSymbol(tuple / 45);
-                result += mapSymbol(tuple % 45);
-            }
-            if (num % 2) {
-                int value = bs.next(6);
-                result += mapSymbol(value);
-            }
-        } else if (mode == QRCodeEncoder::EncodeMode::MODE_BYTE) {
-            int num = bs.next(8);
-            for (int i = 0; i < num; ++i) {
-                result += bs.next(8);
-            }
-        } else {
-            // MODE_AUTO              = -1,
-            // MODE_ECI               = 7, // 0b0111
-            // MODE_KANJI             = 8, // 0b1000
-            // MODE_STRUCTURED_APPEND = 3  // 0b0011
-            CV_Error(Error::StsNotImplemented, format("mode %d", mode));
-        }
-        return result;
-    }
-
 private:
     QRCodeEncoder::CorrectionLevel level;
     int version;
+
+    struct Bitstream {
+        int next(int bits) {
+            int val = 0;
+            while (bits >= actualBits) {
+                val |= data[idx++] << (bits - actualBits);
+                bits -= actualBits;
+                actualBits = 8;
+            }
+            if (bits) {
+                val |= data[idx] >> (actualBits - bits);
+                actualBits -= bits;
+                data[idx] &= 255 >> (8 - actualBits);
+            }
+            return val;
+        }
+
+        std::vector<uint8_t> data;
+        int actualBits = 8;
+        int idx = 0;
+    } bitstream;
 
     template <typename T>
     static void printBinary(const T& val) {
@@ -1495,7 +1329,7 @@ private:
         std::cout << std::endl;
     }
 
-    static inline char mapSymbol(int v)
+    static inline char mapToSymbol(int v)
     {
         static char map[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
                             'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
@@ -1505,37 +1339,10 @@ private:
         return map[v];
     }
 
-    // static void solveLinear(const Mat& A, const Mat& b, std::vector<double>& solutions) {
-    //     double det = cv::determinant(A);
-    //     solutions.resize(A.rows);
-    //     Mat tmp;
-
-    //     hconcat(b, A.colRange(1, A.cols), tmp);
-    //     solutions[0] = cv::determinant(tmp) / det;
-
-    //     hconcat(A.colRange(0, A.cols - 1), b, tmp);
-    //     solutions[solutions.size() - 1] = cv::determinant(tmp) / det;
-
-    //     for (size_t i = 1; i < solutions.size() - 1; ++i) {
-    //         hconcat(std::vector<Mat>{A.colRange(0, i), b, A.colRange(i + 1, A.cols)}, tmp);
-    //         solutions[i] = cv::determinant(tmp) / det;
-    //     }
-    // }
-
+    void decodeFormatInfo(const Mat& straight, int& mask);
+    void extractCodewords(const Mat& source, std::vector<uint8_t>& codewords);
     void errorCorrection(std::vector<uint8_t>& codewords);
-
-    static void getCodewords(uint8_t* bitstream, size_t num, std::vector<uint8_t>& codewords) {
-        codewords.resize(num, 0);
-        size_t offset = 0;
-        for (size_t i = 0; i < num; ++i) {
-            codewords[i] = bitstream[offset + 7];
-            for (size_t j = 7; j >= 1; --j) {
-                codewords[i] |= bitstream[offset] << j;
-                offset += 1;
-            }
-            offset += 1;
-        }
-    }
+    void decodeSymbols(String& result);
 };
 
 void QRCodeEncoder::decode(InputArray qrcode, String& decoded_info) {
@@ -1544,7 +1351,7 @@ void QRCodeEncoder::decode(InputArray qrcode, String& decoded_info) {
     decoder.run(straight, decoded_info);
 }
 
-void QRCodeDecoder::decodeFormatInfo(const Mat& straight, int& mask, QRCodeEncoder::CorrectionLevel& level) {
+void QRCodeDecoder::decodeFormatInfo(const Mat& straight, int& mask) {
     int format_info = 0;
     for (int i = 0; i < 6; ++i)
         format_info |= (straight.at<uint8_t>(i, 8) & 1) << i;
@@ -1580,14 +1387,16 @@ void QRCodeDecoder::run(Mat& straight, String& decoded_info) {
 
     // Decode format info
     int maskPattern;
-    decodeFormatInfo(straight, maskPattern, level);
+    decodeFormatInfo(straight, maskPattern);
 
     // Generate data mask
     Mat masked = straight.clone();
     maskData(straight, maskPattern, masked);
     masked /= 255;  // TODO: avoid division
 
-    decoded_info = extractCodeBlocks(masked);
+    extractCodewords(masked, bitstream.data);
+    errorCorrection(bitstream.data);
+    decodeSymbols(decoded_info);
 }
 
 void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
@@ -1683,6 +1492,178 @@ void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
     // //     if (abs(val) < 1e-1)
     // //         std::cout << i << " " << val << std::endl;
     // // }
+}
+
+void QRCodeDecoder::extractCodewords(const Mat& _source, std::vector<uint8_t>& codewords) {
+    auto alignmentPositions = getAlignmentCoordinates(version);
+
+    Mat source = _source.clone();
+    for (const auto& ctr : alignmentPositions) {
+        Mat area = source({ctr.first - 2, ctr.first + 3}, {ctr.second - 2, ctr.second + 3});
+        area.setTo(INVALID_REGION_VALUE);
+    }
+
+    std::vector<uint8_t> bits;
+    Mat right = source.rowRange(9, source.rows).colRange(source.cols - 8, source.cols).clone();
+    Mat middle = source.colRange(9, source.cols - 8);
+    Mat left = source.rowRange(9, source.rows - 8).colRange(0, 9);
+
+    int moveUpwards = true;
+    for (int i = right.cols / 2 - 1; i >= 0; --i) {
+        Mat col0 = right.col(i * 2);
+        Mat col1 = right.col(i * 2 + 1);
+        for (int j = 0; j < right.rows; ++j) {
+            if (moveUpwards) {
+                if (col1.at<uint8_t>(right.rows - 1 - j) != INVALID_REGION_VALUE)
+                    bits.push_back(col1.at<uint8_t>(right.rows - 1 - j));
+                if (col0.at<uint8_t>(right.rows - 1 - j) != INVALID_REGION_VALUE)
+                    bits.push_back(col0.at<uint8_t>(right.rows - 1 - j));
+            } else {
+                if (col1.at<uint8_t>(j) != INVALID_REGION_VALUE)
+                    bits.push_back(col1.at<uint8_t>(j));
+                if (col0.at<uint8_t>(j) != INVALID_REGION_VALUE)
+                    bits.push_back(col0.at<uint8_t>(j));
+            }
+        }
+        moveUpwards = !moveUpwards;
+    }
+
+    moveUpwards = true;
+    for (int i = middle.cols / 2 - 1; i >= 0; --i) {
+        Mat col0 = middle.col(i * 2);
+        Mat col1 = middle.col(i * 2 + 1);
+        for (int j = 0; j < middle.rows; ++j) {
+            if (moveUpwards) {
+                if (middle.rows - 1 - j == 6)
+                    continue;
+
+                if (col1.at<uint8_t>(middle.rows - 1 - j) != INVALID_REGION_VALUE)
+                    bits.push_back(col1.at<uint8_t>(middle.rows - 1 - j));
+                if (col0.at<uint8_t>(middle.rows - 1 - j) != INVALID_REGION_VALUE)
+                    bits.push_back(col0.at<uint8_t>(middle.rows - 1 - j));
+            } else {
+                if (j == 6)
+                    continue;
+                if (col1.at<uint8_t>(j) != INVALID_REGION_VALUE)
+                    bits.push_back(col1.at<uint8_t>(j));
+                if (col0.at<uint8_t>(j) != INVALID_REGION_VALUE)
+                    bits.push_back(col0.at<uint8_t>(j));
+            }
+        }
+        moveUpwards = !moveUpwards;
+    }
+
+    moveUpwards = true;
+    for (int i = left.cols - 1; i >= 0; i -= 2) {
+        if (i == 6) {
+            i -= 1;
+        }
+        Mat col0 = left.col(i - 1);
+        Mat col1 = left.col(i);
+        for (int j = 0; j < left.rows; ++j) {
+            if (moveUpwards) {
+                if (col1.at<uint8_t>(left.rows - 1 - j) != INVALID_REGION_VALUE)
+                    bits.push_back(col1.at<uint8_t>(left.rows - 1 - j));
+                if (col0.at<uint8_t>(left.rows - 1 - j) != INVALID_REGION_VALUE)
+                    bits.push_back(col0.at<uint8_t>(left.rows - 1 - j));
+            } else {
+                if (col1.at<uint8_t>(j) != INVALID_REGION_VALUE)
+                    bits.push_back(col1.at<uint8_t>(j));
+                if (col0.at<uint8_t>(j) != INVALID_REGION_VALUE)
+                    bits.push_back(col0.at<uint8_t>(j));
+            }
+        }
+        moveUpwards = !moveUpwards;
+    }
+
+    int remainingBits = 0;
+    if (version >= 2 && version <= 6)
+        remainingBits = 7;
+    else if ((version >= 14 && version <= 20) || (version >= 28 && version <= 34))
+        remainingBits = 3;
+    else if (version >= 21 && version <= 27)
+        remainingBits = 4;
+    CV_CheckEQ((int)bits.size(), remainingBits + 8 * version_info_database[version].total_codewords,
+            "QR code decoding bitstream");
+
+    // invert
+    for (size_t i = 0; i < bits.size(); ++i) {
+        bits[i] = 1 - bits[i];
+    }
+
+    // std::cout << bitstream.size() << std::endl;
+    // for (int k = 4; k < bitstream.size(); ++k) {
+    //     std::cout << (int)bitstream[k] << " ";
+    //     if ((k - 4) % 10 == 9)
+    //         std::cout << std::endl;
+    // }
+    for (size_t k = 0; k < bits.size(); ++k) {
+        std::cout << (int)bits[k] << " ";
+        if ((k + 1) % 8 == 0)
+            std::cout << std::endl;
+    }
+
+    std::cout << std::endl;
+
+    // Combine bits to codewords
+    size_t numCodewords = version_info_database[version].total_codewords;
+    codewords.resize(numCodewords, 0);
+
+    size_t offset = 0;
+    for (size_t i = 0; i < numCodewords; ++i) {
+        codewords[i] = bits[offset + 7];
+        for (size_t j = 7; j >= 1; --j) {
+            codewords[i] |= bits[offset] << j;
+            offset += 1;
+        }
+        offset += 1;
+    }
+}
+
+void QRCodeDecoder::decodeSymbols(String& result) {
+    // Determine mode
+    QRCodeEncoder::EncodeMode mode = static_cast<QRCodeEncoder::EncodeMode>(bitstream.next(4));
+
+    // Decode depends on the mode
+    result = "";
+    if (mode == QRCodeEncoder::EncodeMode::MODE_NUMERIC) {
+        int numDigits = bitstream.next(10);
+        for (int i = 0; i < numDigits / 3; ++i) {
+            int triple = bitstream.next(10);
+            result += '0' + triple / 100;
+            result += '0' + (triple / 10) % 10;
+            result += '0' + triple % 10;
+        }
+        int remainingDigits = numDigits % 3;
+        if (remainingDigits) {
+            int triple = bitstream.next(remainingDigits == 1 ? 4 : 7);
+            if (remainingDigits == 2)
+                result += '0' + (triple / 10) % 10;
+            result += '0' + triple % 10;
+        }
+    } else if (mode == QRCodeEncoder::EncodeMode::MODE_ALPHANUMERIC) {
+        int num = bitstream.next(9);
+        for (int i = 0; i < num / 2; ++i) {
+            int tuple = bitstream.next(11);
+            result += mapToSymbol(tuple / 45);
+            result += mapToSymbol(tuple % 45);
+        }
+        if (num % 2) {
+            int value = bitstream.next(6);
+            result += mapToSymbol(value);
+        }
+    } else if (mode == QRCodeEncoder::EncodeMode::MODE_BYTE) {
+        int num = bitstream.next(8);
+        for (int i = 0; i < num; ++i) {
+            result += bitstream.next(8);
+        }
+    } else {
+        // MODE_AUTO              = -1,
+        // MODE_ECI               = 7, // 0b0111
+        // MODE_KANJI             = 8, // 0b1000
+        // MODE_STRUCTURED_APPEND = 3  // 0b0011
+        CV_Error(Error::StsNotImplemented, format("mode %d", mode));
+    }
 }
 
 }
