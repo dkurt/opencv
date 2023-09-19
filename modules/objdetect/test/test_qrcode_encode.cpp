@@ -222,8 +222,8 @@ TEST(Objdetect_QRCode_Encode_Decode, regression)
 {
     const std::string root = "qrcode/decode_encode";
     const int min_version = 1;
-    const int test_max_version = 1;
-    const int max_ec_level = 0;
+    const int test_max_version = 2;
+    const int max_ec_level = 3;
     const std::string dataset_config = findDataFile(root + "/" + "symbol_sets.json");
     const std::string version_config = findDataFile(root + "/" + "capacity.json");
 
@@ -238,11 +238,11 @@ TEST(Objdetect_QRCode_Encode_Decode, regression)
     size_t mode_count = static_cast<size_t>(mode_list.size());
     ASSERT_GT(mode_count, 0u) << "Can't find validation data entries in 'test_images': " << dataset_config;
 
-    const int testing_modes = 1;
+    const int testing_modes = 3;
     QRCodeEncoder::EncodeMode modes[testing_modes] = {
         QRCodeEncoder::MODE_NUMERIC,
-        // QRCodeEncoder::MODE_ALPHANUMERIC,
-        // QRCodeEncoder::MODE_BYTE
+        QRCodeEncoder::MODE_ALPHANUMERIC,
+        QRCodeEncoder::MODE_BYTE
     };
 
     for (int i = 0; i < testing_modes; i++)
@@ -284,7 +284,6 @@ TEST(Objdetect_QRCode_Encode_Decode, regression)
                 params.mode = mode;
                 Ptr<QRCodeEncoder> encoder = QRCodeEncoder::create(params);
                 Mat qrcode;
-                std::cout << input_info.size() << " " << input_info << std::endl;
                 encoder->encode(input_info, qrcode);
                 EXPECT_TRUE(!qrcode.empty()) << "Can't generate this QR image (" << "mode: " << (int)mode <<
                                                 " version: "<< version <<" error correction level: "<< (int)level <<")";
@@ -307,7 +306,6 @@ TEST(Objdetect_QRCode_Encode_Decode, regression)
                 }
 
                 Mat straight_barcode;
-                imwrite("src.png", qrcode);
                 std::string output_info = QRCodeDetector().decode(resized_src, corners, straight_barcode);
                 EXPECT_FALSE(output_info.empty())
                     << "The generated QRcode cannot be decoded." << " Mode: " << (int)mode

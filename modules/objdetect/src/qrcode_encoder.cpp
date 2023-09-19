@@ -1271,30 +1271,6 @@ class QRCodeDecoder {
 public:
     void run(Mat& straight, String& decoded_info);
 
-    // TODO: reuse
-    static inline std::vector<std::pair<int, int>> getAlignmentCoordinates(int version) {
-        if (version <= 1) return {};
-        int intervals = (version / 7) + 1; // Number of gaps between alignment patterns
-        int distance = 4 * version + 4; // Distance between first and last alignment pattern
-        int step = cvRound((double)distance / (double)intervals); // Round equal spacing to nearest integer
-        step += step & 0b1; // Round step to next even number
-        vector<int> coordinates((size_t)intervals + 1ull);
-        coordinates[0] = 6; // First coordinate is always 6 (can't be calculated with step)
-        for (int i = 1; i <= intervals; i++) {
-            coordinates[i] = (6 + distance - step * (intervals - i));  // Start right/bottom and go left/up by step*k
-        }
-        if (version >= 7) {
-            return {std::make_pair(coordinates.back(), coordinates.back()),
-                    std::make_pair(coordinates.back(), coordinates[coordinates.size()-2]),
-                    std::make_pair(coordinates[coordinates.size()-2], coordinates.back()),
-                    std::make_pair(coordinates[coordinates.size()-2], coordinates[coordinates.size()-2]),
-                    std::make_pair(coordinates[0], coordinates[1]),
-                    std::make_pair(coordinates[1], coordinates[0]),
-                };
-        }
-        return {std::make_pair(coordinates.back(), coordinates.back())};
-    }
-
 private:
     QRCodeEncoder::CorrectionLevel level;
     int version;
@@ -1500,13 +1476,27 @@ void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
 }
 
 void QRCodeDecoder::extractCodewords(const Mat& _source, std::vector<uint8_t>& codewords) {
-    auto alignmentPositions = getAlignmentCoordinates(version);
+    const VersionInfo& version_info = version_info_database[version];
+    Mat source = _source.clone();
 
     // Mask alignment markers
-    Mat source = _source.clone();
-    for (const auto& ctr : alignmentPositions) {
-        Mat area = source({ctr.first - 2, ctr.first + 3}, {ctr.second - 2, ctr.second + 3});
-        area.setTo(INVALID_REGION_VALUE);
+    std::vector<int> alignCenters;
+    alignCenters.reserve(MAX_ALIGNMENT);
+    for (int i = 0; i < MAX_ALIGNMENT && version_info.alignment_pattern[i]; i++)
+        alignCenters.push_back(version_info.alignment_pattern[i]);
+
+    for (size_t i = 0; i < alignCenters.size(); i++)
+    {
+        for (size_t j = 0; j < alignCenters.size(); j++)
+        {
+            if ((i == alignCenters.size() - 1 && j == 0) || (i == 0 && j == 0) ||
+                (j == alignCenters.size() - 1 && i == 0))
+                continue;
+            int x = alignCenters[i];
+            int y = alignCenters[j];
+            Mat area = source({x - 2, x + 3}, {y - 2, y + 3});
+            area.setTo(INVALID_REGION_VALUE);
+        }
     }
 
     std::vector<uint8_t> bits;
@@ -1595,7 +1585,7 @@ void QRCodeDecoder::extractCodewords(const Mat& _source, std::vector<uint8_t>& c
         remainingBits = 3;
     else if (version >= 21 && version <= 27)
         remainingBits = 4;
-    CV_CheckEQ((int)bits.size(), remainingBits + 8 * version_info_database[version].total_codewords,
+    CV_CheckEQ((int)bits.size(), remainingBits + 8 * version_info.total_codewords,
             "QR code decoding bitstream");
 
     // invert
@@ -1618,7 +1608,7 @@ void QRCodeDecoder::extractCodewords(const Mat& _source, std::vector<uint8_t>& c
     // std::cout << std::endl;
 
     // Combine bits to codewords
-    size_t numCodewords = version_info_database[version].total_codewords;
+    size_t numCodewords = version_info.total_codewords;
     codewords.resize(numCodewords, 0);
 
     size_t offset = 0;
