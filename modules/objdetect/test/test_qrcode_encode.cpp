@@ -296,7 +296,7 @@ TEST(Objdetect_QRCode_Encode_Decode, regression)
                 corners[3] = Point2f(border_width, qrcode.rows * 1.0f - border_width);
 
                 Mat resized_src;
-                qrcode.at<uint8_t>(qrcode.rows - 3, qrcode.cols - 3) = 0;
+                // qrcode.at<uint8_t>(qrcode.rows - 3, qrcode.cols - 3) = 0;
                 resize(qrcode, resized_src, fixed_size, 0, 0, INTER_AREA);
                 float width_ratio =  resized_src.cols * 1.0f / qrcode.cols;
                 float height_ratio = resized_src.rows * 1.0f / qrcode.rows;
