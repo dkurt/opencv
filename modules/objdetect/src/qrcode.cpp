@@ -2737,7 +2737,7 @@ void printBinary(const T& val) {
     std::cout << std::endl;
 }
 
-Mat getMask(int version_size, int mask_type_num) {
+static Mat getMask(int version_size, int mask_type_num) {
     // Mat counts(1, version_size, CV_32S);
     // std::iota(counts.begin<int>(), counts.end<int>(), 0);
     // Mat i = cv::repeat(counts.t(), 1, version_size);
@@ -2783,7 +2783,7 @@ static inline char mapSymbol(int v)
     return map[v];
 }
 
-// void solveLinear(const Mat& A, const Mat& b, std::vector<double>& solutions) {
+// static void solveLinear(const Mat& A, const Mat& b, std::vector<double>& solutions) {
 //     double det = cv::determinant(A);
 //     solutions.resize(A.rows);
 //     Mat tmp;
@@ -2794,53 +2794,112 @@ static inline char mapSymbol(int v)
 //     hconcat(A.colRange(0, A.cols - 1), b, tmp);
 //     solutions[solutions.size() - 1] = cv::determinant(tmp) / det;
 
-//     for (int i = 1; i < solutions.size() - 1; ++i) {
+//     for (size_t i = 1; i < solutions.size() - 1; ++i) {
 //         hconcat(std::vector<Mat>{A.colRange(0, i), b, A.colRange(i + 1, A.cols)}, tmp);
 //         solutions[i] = cv::determinant(tmp) / det;
 //     }
 // }
 
-// void errorCorrection(std::vector<uint8_t>& codewords) {
-//     // Compute syndromes
-//     std::vector<uint32_t> syndromes(8, 0);
-//     for (size_t i = 0; i < syndromes.size(); ++i) {
-//         for (size_t j = 0; j < codewords.size(); ++j) {
-//             syndromes[i] += codewords[j] * (1 << j * i % 8);
-//         }
-//         std::cout << syndromes[i] << std::endl;
-//     }
+static uint8_t gfMul(const uint8_t x, const uint8_t y)
+{
+    if (x == 0 || y == 0)
+        return 0;
+    return gf_exp[(gf_log[x] + gf_log[y]) % 255];
+}
 
-//     // Find error positions by solving a system of linear equations
-//     Mat_<double> A({4, 4}, {
-//         syndromes[0], -(double)syndromes[1], syndromes[2], -(double)syndromes[3],
-//         syndromes[1], -(double)syndromes[2], syndromes[3], -(double)syndromes[4],
-//         syndromes[2], -(double)syndromes[3], syndromes[4], -(double)syndromes[5],
-//         syndromes[3], -(double)syndromes[4], syndromes[5], -(double)syndromes[6],
-//     });
-//     std::cout << A << std::endl;
-//     Mat_<double> b({4, 1}, {-(double)syndromes[4], -(double)syndromes[5], -(double)syndromes[6], -(double)syndromes[7]});
+static void errorCorrection(std::vector<uint8_t>& codewords, int version, int level) {
+    int numSyndromes = version_info_database[version].ecc[level].ecc_codewords;
+    if (version == 3 && level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_L)
+        numSyndromes -= 1;
+    else if (version == 2 && level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_L)
+        numSyndromes -= 2;
+    else if (version == 1) {
+        if (level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_L)
+            numSyndromes -= 3;
+        else if (level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_M)
+            numSyndromes -= 2;
+        else
+            numSyndromes -= 1;
+    }
 
-//     std::vector<double> sigmas;
-//     solveLinear(A, b, sigmas);
-//     for (int i = 0; i < sigmas.size(); ++i) {
-//         std::cout << "sigma " << sigmas[i] << std::endl;
-//     }
+    CV_Assert(numSyndromes % 2 == 0);
 
-//     //
-//     for (int i = 0; i < 256; ++i) {
-//         double val = sigmas[0];
-//         uint32_t prod = i;
-//         for (int j = 1; j < sigmas.size(); ++j) {
-//             val += sigmas[j] * (prod % 256);
-//             prod *= i;
-//         }
-//         val += (prod % 256);
-//         if (abs(val) < 1e-1)
-//             std::cout << i << " " << val << std::endl;
-//     }
-// }
+    // Compute syndromes
+    // TODO: replace to gfPolyMul
+    std::vector<uint8_t> syndromes(numSyndromes, codewords[0]);
+    for (size_t i = 0; i < syndromes.size(); ++i) {
+        for (size_t j = 1; j < codewords.size(); ++j) {
+            syndromes[i] = gfMul(syndromes[i], (1 << i % 8)) ^ codewords[j];
+        }
+        std::cout << "syndromes[" << i << "] " << (int)syndromes[i] << std::endl;
+    }
 
-void getCodewords(uint8_t* bitstream, size_t num, std::vector<uint8_t>& codewords) {
+    int numPoses = numSyndromes / 2;
+
+    // Find error positions by solving a system of linear equations
+    // Mat A(numPoses, numPoses, CV_64F);
+    // Mat b(numPoses, 1, CV_64F);
+    // for (int i = 0; i < numPoses; ++i) {
+    //     b.at<double>(i) = -(double)syndromes[numPoses + i];
+    //     for (int j = 0; j < numPoses; ++j) {
+    //         A.at<double>(i, j) = (j % 2 ? -1 : 1) * (double)syndromes[i + j];
+    //     }
+    // }
+    // std::cout << A << std::endl;
+    // std::cout << b << std::endl;
+
+    // int val1, val2;
+    // bool solved = false;
+    // for (int a = 0; a < 256; ++a) {
+    //     for (int b = 0; b < 256; ++b) {
+    //         val1 = syndromes[0] * a - syndromes[1] * b;
+    //         val2 = syndromes[1] * a - syndromes[2] * b;
+    //         while (val1 < 0) {
+    //             val1 += 256;
+    //         }
+    //         while (val2 < 0) {
+    //             val2 += 256;
+    //         }
+    //         val1 %= 256;
+    //         val2 %= 256;
+    //         if (val1 == 256 - syndromes[2] && val2 == 256 - syndromes[3]) {
+    //             std::cout << "root " << val1 << " " << val2 << std::endl;
+    //             solved = true;
+    //             break;
+    //         }
+    //     }
+    //     if (solved)
+    //         break;
+    // }
+    // std::vector<int> digits;
+    // for (int a = 0; a < 256; ++a) {
+    //     if ((val1 + val2 * a) % 256 == 0)
+    //         digits.push_back(a);
+    // }
+    // for (int d : digits) {
+    //     std::cout << "root " << d << std::endl;
+    // }
+
+    // // std::vector<double> sigmas;
+    // // solveLinear(A, b, sigmas);
+    // // for (size_t i = 0; i < sigmas.size(); ++i) {
+    // //     std::cout << "sigma " << sigmas[i] << std::endl;
+    // // }
+
+    // // for (int i = 0; i < 256; ++i) {
+    // //     double val = sigmas[0];
+    // //     uint32_t prod = i;
+    // //     for (size_t j = 1; j < sigmas.size(); ++j) {
+    // //         val += sigmas[j] * (prod % 256);
+    // //         prod *= i;
+    // //     }
+    // //     val += (prod % 256);
+    // //     if (abs(val) < 1e-1)
+    // //         std::cout << i << " " << val << std::endl;
+    // // }
+}
+
+static void getCodewords(uint8_t* bitstream, size_t num, std::vector<uint8_t>& codewords) {
     codewords.resize(num, 0);
     size_t offset = 0;
     for (size_t i = 0; i < num; ++i) {
@@ -2853,7 +2912,7 @@ void getCodewords(uint8_t* bitstream, size_t num, std::vector<uint8_t>& codeword
     }
 }
 
-std::string extractCodeBlocks(const Mat& _source, QRCodeEncoder::CorrectionLevel level, const int version) {
+static std::string extractCodeBlocks(const Mat& _source, QRCodeEncoder::CorrectionLevel level, const int version) {
     static const uint8_t INVALID_REGION_VALUE = 110;
 
     vector<pair<int, int>> alignmentPositions = getAlignmentCoordinates(version);
@@ -2864,19 +2923,10 @@ std::string extractCodeBlocks(const Mat& _source, QRCodeEncoder::CorrectionLevel
         area.setTo(INVALID_REGION_VALUE);
     }
 
-    // const uint8_t* data = source.ptr<const uint8_t>();
-    // int step = source.step;
-
-    // std::vector<uint8_t> blocks;
-    // blocks.reserve(26);
-
     std::vector<uint8_t> bitstream;
     Mat right = source.rowRange(9, source.rows).colRange(source.cols - 8, source.cols).clone();
     Mat middle = source.colRange(9, source.cols - 8);
     Mat left = source.rowRange(9, source.rows - 8).colRange(0, 9);
-    // std::cout << right.size() << std::endl;
-    // std::cout << middle.size() << std::endl;
-    // std::cout << left.size() << std::endl;
 
     int moveUpwards = true;
     for (int i = right.cols / 2 - 1; i >= 0; --i) {
@@ -2957,7 +3007,7 @@ std::string extractCodeBlocks(const Mat& _source, QRCodeEncoder::CorrectionLevel
                "QR code decoding bitstream");
 
     // invert
-    for (int i = 0; i < bitstream.size(); ++i) {
+    for (size_t i = 0; i < bitstream.size(); ++i) {
         bitstream[i] = 1 - bitstream[i];
     }
 
@@ -2998,7 +3048,7 @@ std::string extractCodeBlocks(const Mat& _source, QRCodeEncoder::CorrectionLevel
         int idx = 0;
     } bs;
     getCodewords(bitstream.data(), version_info_database[version].total_codewords, bs.codewords);
-    // errorCorrection(codewords);
+    errorCorrection(bs.codewords, version, level);
 
     // Determine mode
     QRCodeEncoder::EncodeMode mode = static_cast<QRCodeEncoder::EncodeMode>(bs.next(4));
@@ -3048,7 +3098,7 @@ std::string extractCodeBlocks(const Mat& _source, QRCodeEncoder::CorrectionLevel
     return result;
 }
 
-std::string decode(Mat& straight) {
+static std::string decode(Mat& straight) {
     CV_Assert(straight.rows == straight.cols);
     straight /= 255;
     const int version = (straight.rows - 21) / 4 + 1;
