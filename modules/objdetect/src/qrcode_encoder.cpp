@@ -1487,40 +1487,12 @@ private:
     int version;
 
     template <typename T>
-    void printBinary(const T& val) {
+    static void printBinary(const T& val) {
         for (int i = sizeof(val) * 8 - 1; i >= 0; --i) {
             int bit = (val >> i) & 1;
             std::cout << bit;
         }
         std::cout << std::endl;
-    }
-
-    static Mat getMask(int version_size, int mask_type_num) {
-        // Mat counts(1, version_size, CV_32S);
-        // std::iota(counts.begin<int>(), counts.end<int>(), 0);
-        // Mat i = cv::repeat(counts.t(), 1, version_size);
-        // Mat j = cv::repeat(counts, version_size, 1);
-        // if (mask_type_num == 0)
-        //     return (i + j) % 2 == 0;
-        Mat mask = Mat::zeros(version_size, version_size, CV_8UC1);
-        for (int i = 0; i < version_size; i++)
-        {
-            for (int j = 0; j < version_size; j++)
-            {
-                if((mask_type_num == 0 && !((i + j) % 2)) ||
-                        (mask_type_num == 1 && !(i % 2)) ||
-                        (mask_type_num == 2 && !(j % 3)) ||
-                        (mask_type_num == 3 && !((i + j) % 3)) ||
-                        (mask_type_num == 4 && !(((i / 2) + (j / 3)) % 2)) ||
-                        (mask_type_num == 5 && !((i * j) % 2 + (i * j) % 3))||
-                        (mask_type_num == 6 && !(((i * j) % 2 + (i * j) % 3) % 2))||
-                        ((mask_type_num == 7 && !(((i * j) % 3 + (i + j) % 2) % 2))))
-                {
-                    mask.at<uint8_t>(i, j) = 1;
-                }
-            }
-        }
-        return mask;
     }
 
     static inline char mapSymbol(int v)
@@ -1575,14 +1547,15 @@ void QRCodeEncoder::decode(InputArray qrcode, String& decoded_info) {
 void QRCodeDecoder::decodeFormatInfo(const Mat& straight, int& mask, QRCodeEncoder::CorrectionLevel& level) {
     int format_info = 0;
     for (int i = 0; i < 6; ++i)
-        format_info |= straight.at<uint8_t>(i, 8) << i;
+        format_info |= (straight.at<uint8_t>(i, 8) & 1) << i;
 
-    format_info |= straight.at<uint8_t>(7, 8) << 6;
-    format_info |= straight.at<uint8_t>(8, 8) << 7;
-    format_info |= straight.at<uint8_t>(8, 7) << 8;
+    format_info |= (straight.at<uint8_t>(7, 8) & 1) << 6;
+    format_info |= (straight.at<uint8_t>(8, 8) & 1) << 7;
+    format_info |= (straight.at<uint8_t>(8, 7) & 1) << 8;
 
     for (int i = 9; i < 15; ++i)
-        format_info |= straight.at<uint8_t>(8, 14 - i) << i;
+        format_info |= (straight.at<uint8_t>(8, 14 - i) & 1) << i;
+    printBinary(format_info);
 
     int mask_pattern = 0b101010000010010;
     format_info = ~format_info ^ mask_pattern;
@@ -1598,7 +1571,6 @@ void QRCodeDecoder::decodeFormatInfo(const Mat& straight, int& mask, QRCodeEncod
 
 void QRCodeDecoder::run(Mat& straight, String& decoded_info) {
     CV_Assert(straight.rows == straight.cols);
-    straight /= 255;  // TODO: work with raw data
     version = (straight.rows - 21) / 4 + 1;
 
     if (version >= 7)
@@ -1611,10 +1583,9 @@ void QRCodeDecoder::run(Mat& straight, String& decoded_info) {
     decodeFormatInfo(straight, maskPattern, level);
 
     // Generate data mask
-    // TODO: avoid extra Mat allocation
-    Mat mask = getMask(straight.rows, maskPattern);
-    Mat masked;
-    bitwise_xor(straight, mask, masked);
+    Mat masked = straight.clone();
+    maskData(straight, maskPattern, masked);
+    masked /= 255;  // TODO: avoid division
 
     decoded_info = extractCodeBlocks(masked);
 }

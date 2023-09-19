@@ -10,7 +10,6 @@
 #include "opencv2/calib3d.hpp"
 #include <opencv2/core/utils/logger.hpp>
 #include "graphical_code_detector_impl.hpp"
-#include "qrcode_encoder_table.inl.hpp"
 
 #ifdef HAVE_QUIRC
 #include "quirc.h"
