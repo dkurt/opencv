@@ -1343,6 +1343,10 @@ private:
     void extractCodewords(const Mat& source, std::vector<uint8_t>& codewords);
     void errorCorrection(std::vector<uint8_t>& codewords);
     void decodeSymbols(String& result);
+    void decodeNumeric(String& result);
+    void decodeAlpha(String& result);
+    void decodeByte(String& result);
+    void decodeECI(String& result);
 };
 
 void QRCodeEncoder::decode(InputArray qrcode, String& decoded_info) {
@@ -1362,7 +1366,7 @@ void QRCodeDecoder::decodeFormatInfo(const Mat& straight, int& mask) {
 
     for (int i = 9; i < 15; ++i)
         format_info |= (straight.at<uint8_t>(8, 14 - i) & 1) << i;
-    printBinary(format_info);
+    // printBinary(format_info);
 
     int mask_pattern = 0b101010000010010;
     format_info = ~format_info ^ mask_pattern;
@@ -1374,14 +1378,12 @@ void QRCodeDecoder::decodeFormatInfo(const Mat& straight, int& mask) {
         case 3: level = QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_Q; break;
     };
     mask = (format_info >> 10) & 0b111;
+    // TODO: error correction of format information
 }
 
 void QRCodeDecoder::run(Mat& straight, String& decoded_info) {
     CV_Assert(straight.rows == straight.cols);
     version = (straight.rows - 21) / 4 + 1;
-
-    if (version >= 7)
-        CV_Error(Error::StsNotImplemented, format("Version %d", version));
 
     CV_LOG_INFO(NULL, "QR decode: version " << version);
 
@@ -1400,6 +1402,9 @@ void QRCodeDecoder::run(Mat& straight, String& decoded_info) {
 }
 
 void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
+    CV_CheckEQ((int)codewords.size(), version_info_database[version].total_codewords,
+               "Number of codewords");
+
     int numSyndromes = version_info_database[version].ecc[level].ecc_codewords;
     if (version == 3 && level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_L)
         numSyndromes -= 1;
@@ -1497,6 +1502,7 @@ void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
 void QRCodeDecoder::extractCodewords(const Mat& _source, std::vector<uint8_t>& codewords) {
     auto alignmentPositions = getAlignmentCoordinates(version);
 
+    // Mask alignment markers
     Mat source = _source.clone();
     for (const auto& ctr : alignmentPositions) {
         Mat area = source({ctr.first - 2, ctr.first + 3}, {ctr.second - 2, ctr.second + 3});
@@ -1507,6 +1513,12 @@ void QRCodeDecoder::extractCodewords(const Mat& _source, std::vector<uint8_t>& c
     Mat right = source.rowRange(9, source.rows).colRange(source.cols - 8, source.cols).clone();
     Mat middle = source.colRange(9, source.cols - 8);
     Mat left = source.rowRange(9, source.rows - 8).colRange(0, 9);
+
+    // Mask Version Information blocks
+    if (version >= 7) {
+        middle.rowRange(0, 6).colRange(middle.cols - 3, middle.cols).setTo(INVALID_REGION_VALUE);
+        left.colRange(0, 6).rowRange(left.rows - 3, left.rows).setTo(INVALID_REGION_VALUE);
+    }
 
     int moveUpwards = true;
     for (int i = right.cols / 2 - 1; i >= 0; --i) {
@@ -1597,13 +1609,13 @@ void QRCodeDecoder::extractCodewords(const Mat& _source, std::vector<uint8_t>& c
     //     if ((k - 4) % 10 == 9)
     //         std::cout << std::endl;
     // }
-    for (size_t k = 0; k < bits.size(); ++k) {
-        std::cout << (int)bits[k] << " ";
-        if ((k + 1) % 8 == 0)
-            std::cout << std::endl;
-    }
+    // for (size_t k = 0; k < bits.size(); ++k) {
+    //     std::cout << (int)bits[k] << " ";
+    //     if ((k + 1) % 8 == 0)
+    //         std::cout << std::endl;
+    // }
 
-    std::cout << std::endl;
+    // std::cout << std::endl;
 
     // Combine bits to codewords
     size_t numCodewords = version_info_database[version].total_codewords;
@@ -1621,49 +1633,70 @@ void QRCodeDecoder::extractCodewords(const Mat& _source, std::vector<uint8_t>& c
 }
 
 void QRCodeDecoder::decodeSymbols(String& result) {
+    CV_Assert(!bitstream.data.empty());
+
     // Determine mode
     QRCodeEncoder::EncodeMode mode = static_cast<QRCodeEncoder::EncodeMode>(bitstream.next(4));
 
     // Decode depends on the mode
     result = "";
-    if (mode == QRCodeEncoder::EncodeMode::MODE_NUMERIC) {
-        int numDigits = bitstream.next(10);
-        for (int i = 0; i < numDigits / 3; ++i) {
-            int triple = bitstream.next(10);
-            result += '0' + triple / 100;
-            result += '0' + (triple / 10) % 10;
-            result += '0' + triple % 10;
-        }
-        int remainingDigits = numDigits % 3;
-        if (remainingDigits) {
-            int triple = bitstream.next(remainingDigits == 1 ? 4 : 7);
-            if (remainingDigits == 2)
-                result += '0' + (triple / 10) % 10;
-            result += '0' + triple % 10;
-        }
-    } else if (mode == QRCodeEncoder::EncodeMode::MODE_ALPHANUMERIC) {
-        int num = bitstream.next(9);
-        for (int i = 0; i < num / 2; ++i) {
-            int tuple = bitstream.next(11);
-            result += mapToSymbol(tuple / 45);
-            result += mapToSymbol(tuple % 45);
-        }
-        if (num % 2) {
-            int value = bitstream.next(6);
-            result += mapToSymbol(value);
-        }
-    } else if (mode == QRCodeEncoder::EncodeMode::MODE_BYTE) {
-        int num = bitstream.next(8);
-        for (int i = 0; i < num; ++i) {
-            result += bitstream.next(8);
-        }
-    } else {
-        // MODE_AUTO              = -1,
-        // MODE_ECI               = 7, // 0b0111
-        // MODE_KANJI             = 8, // 0b1000
-        // MODE_STRUCTURED_APPEND = 3  // 0b0011
-        CV_Error(Error::StsNotImplemented, format("mode %d", mode));
+    switch (mode)
+    {
+        case QRCodeEncoder::EncodeMode::MODE_NUMERIC:
+            return decodeNumeric(result);
+        case QRCodeEncoder::EncodeMode::MODE_ALPHANUMERIC:
+            return decodeAlpha(result);
+        case QRCodeEncoder::EncodeMode::MODE_BYTE:
+            return decodeByte(result);
+        case QRCodeEncoder::EncodeMode::MODE_ECI:
+            return decodeECI(result);
+        default:
+            CV_Error(Error::StsNotImplemented, format("mode %d", mode));
     }
+}
+
+void QRCodeDecoder::decodeNumeric(String& result) {
+    int numDigits = bitstream.next(10);
+    for (int i = 0; i < numDigits / 3; ++i) {
+        int triple = bitstream.next(10);
+        result += '0' + triple / 100;
+        result += '0' + (triple / 10) % 10;
+        result += '0' + triple % 10;
+    }
+    int remainingDigits = numDigits % 3;
+    if (remainingDigits) {
+        int triple = bitstream.next(remainingDigits == 1 ? 4 : 7);
+        if (remainingDigits == 2)
+            result += '0' + (triple / 10) % 10;
+        result += '0' + triple % 10;
+    }
+}
+
+void QRCodeDecoder::decodeAlpha(String& result) {
+    int num = bitstream.next(9);
+    for (int i = 0; i < num / 2; ++i) {
+        int tuple = bitstream.next(11);
+        result += mapToSymbol(tuple / 45);
+        result += mapToSymbol(tuple % 45);
+    }
+    if (num % 2) {
+        int value = bitstream.next(6);
+        result += mapToSymbol(value);
+    }
+}
+
+void QRCodeDecoder::decodeByte(String& result) {
+    int num = bitstream.next(8);
+    for (int i = 0; i < num; ++i) {
+        result += bitstream.next(8);
+    }
+}
+
+void QRCodeDecoder::decodeECI(String& result) {
+    int eci_assignment_number = bitstream.next(8);
+    CV_UNUSED(eci_assignment_number);
+    decodeSymbols(result);
+    // TODO: there should be multiple sets
 }
 
 }
