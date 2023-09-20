@@ -7,7 +7,6 @@
 #include "precomp.hpp"
 #include "qrcode_encoder_table.inl.hpp"
 #include <iostream>
-#include <opencv2/core/utils/logger.hpp>
 
 namespace cv
 {
@@ -1267,9 +1266,11 @@ Ptr<QRCodeEncoder> QRCodeEncoder::create(const QRCodeEncoder::Params& parameters
 
 // QRCodeDecoder
 
+void decode(const Mat& straight, String& decoded_info);
+
 class QRCodeDecoder {
 public:
-    void run(Mat& straight, String& decoded_info);
+    void run(const Mat& straight, String& decoded_info);
 
 private:
     QRCodeEncoder::CorrectionLevel level;
@@ -1296,15 +1297,6 @@ private:
         int idx = 0;
     } bitstream;
 
-    template <typename T>
-    static void printBinary(const T& val) {
-        for (int i = sizeof(val) * 8 - 1; i >= 0; --i) {
-            int bit = (val >> i) & 1;
-            std::cout << bit;
-        }
-        std::cout << std::endl;
-    }
-
     static inline char mapToSymbol(int v)
     {
         static char map[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
@@ -1316,7 +1308,7 @@ private:
     }
 
     void decodeFormatInfo(const Mat& straight, int& mask);
-    void extractCodewords(const Mat& source, std::vector<uint8_t>& codewords);
+    void extractCodewords(Mat& source, std::vector<uint8_t>& codewords);
     void errorCorrection(std::vector<uint8_t>& codewords);
     void decodeSymbols(String& result);
     void decodeNumeric(String& result);
@@ -1325,9 +1317,8 @@ private:
     void decodeECI(String& result);
 };
 
-void QRCodeEncoder::decode(InputArray qrcode, String& decoded_info) {
+void decode(const Mat& straight, String& decoded_info) {
     QRCodeDecoder decoder;
-    Mat straight = qrcode.getMat();
     decoder.run(straight, decoded_info);
 }
 
@@ -1342,7 +1333,6 @@ void QRCodeDecoder::decodeFormatInfo(const Mat& straight, int& mask) {
 
     for (int i = 9; i < 15; ++i)
         format_info |= (straight.at<uint8_t>(8, 14 - i) & 1) << i;
-    // printBinary(format_info);
 
     int mask_pattern = 0b101010000010010;
     format_info = ~format_info ^ mask_pattern;
@@ -1357,11 +1347,9 @@ void QRCodeDecoder::decodeFormatInfo(const Mat& straight, int& mask) {
     // TODO: error correction of format information
 }
 
-void QRCodeDecoder::run(Mat& straight, String& decoded_info) {
+void QRCodeDecoder::run(const Mat& straight, String& decoded_info) {
     CV_Assert(straight.rows == straight.cols);
     version = (straight.rows - 21) / 4 + 1;
-
-    CV_LOG_INFO(NULL, "QR decode: version " << version);
 
     // Decode format info
     int maskPattern;
@@ -1475,9 +1463,8 @@ void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
     // // }
 }
 
-void QRCodeDecoder::extractCodewords(const Mat& _source, std::vector<uint8_t>& codewords) {
+void QRCodeDecoder::extractCodewords(Mat& source, std::vector<uint8_t>& codewords) {
     const VersionInfo& version_info = version_info_database[version];
-    Mat source = _source.clone();
 
     // Mask alignment markers
     std::vector<int> alignCenters;
@@ -1500,7 +1487,7 @@ void QRCodeDecoder::extractCodewords(const Mat& _source, std::vector<uint8_t>& c
     }
 
     std::vector<uint8_t> bits;
-    Mat right = source.rowRange(9, source.rows).colRange(source.cols - 8, source.cols).clone();
+    Mat right = source.rowRange(9, source.rows).colRange(source.cols - 8, source.cols);
     Mat middle = source.colRange(9, source.cols - 8);
     Mat left = source.rowRange(9, source.rows - 8).colRange(0, 9);
 
@@ -1592,20 +1579,6 @@ void QRCodeDecoder::extractCodewords(const Mat& _source, std::vector<uint8_t>& c
     for (size_t i = 0; i < bits.size(); ++i) {
         bits[i] = 1 - bits[i];
     }
-
-    // std::cout << bitstream.size() << std::endl;
-    // for (int k = 4; k < bitstream.size(); ++k) {
-    //     std::cout << (int)bitstream[k] << " ";
-    //     if ((k - 4) % 10 == 9)
-    //         std::cout << std::endl;
-    // }
-    // for (size_t k = 0; k < bits.size(); ++k) {
-    //     std::cout << (int)bits[k] << " ";
-    //     if ((k + 1) % 8 == 0)
-    //         std::cout << std::endl;
-    // }
-
-    // std::cout << std::endl;
 
     // Combine bits to codewords
     size_t numCodewords = version_info.total_codewords;

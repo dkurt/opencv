@@ -758,8 +758,6 @@ public:
     */
     CV_WRAP virtual void encode(const String& encoded_info, OutputArray qrcode) = 0;
 
-    CV_WRAP static void decode(InputArray qrcode, String& decoded_info);
-
     /** @brief Generates QR code from input string in Structured Append mode. The encoded message is splitting over a number of QR codes.
      @param encoded_info Input string to encode.
      @param qrcodes Vector of generated QR codes.

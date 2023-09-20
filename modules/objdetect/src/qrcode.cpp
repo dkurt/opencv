@@ -2727,6 +2727,8 @@ bool QRDecode::samplingForVersion()
     return true;
 }
 
+extern void decode(const Mat& straight, String& decoded_info);
+
 bool QRDecode::decodingProcess()
 {
 #ifdef HAVE_QUIRC
@@ -2762,7 +2764,7 @@ bool QRDecode::decodingProcess()
     }
     return true;
 #else
-    QRCodeEncoder::decode(straight, result_info);
+    decode(straight, result_info);
     return true;
 #endif
 
