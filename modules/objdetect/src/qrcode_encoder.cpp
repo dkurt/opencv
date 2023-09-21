@@ -1385,14 +1385,6 @@ void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
 
     CV_Assert(numSyndromes % 2 == 0);
 
-    for (size_t j = 0; j < codewords.size(); ++j) {
-        std::cout << (int)codewords[j] << " ";
-    }
-    std::cout << std::endl;
-
-    codewords[0] = 255;
-    // codewords[1] = 255;
-
     // Compute syndromes
     bool hasError = false;
     std::vector<uint8_t> syndromes(numSyndromes, codewords[0]);
@@ -1400,7 +1392,6 @@ void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
         for (size_t j = 1; j < codewords.size(); ++j) {
             syndromes[i] = gfMul(syndromes[i], (1 << i % 8)) ^ codewords[j];
         }
-        std::cout << "sybndrome " << (int)syndromes[i] << std::endl;
         hasError |= syndromes[i];
     }
     if (!hasError)
@@ -1413,165 +1404,50 @@ void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
 
     int numPoses = numSyndromes / 2;
 
-    std::vector<uint8_t> C(100, 1);
-    std::vector<uint8_t> B(100, 1);
+    std::vector<uint8_t> C(100, 0);
+    std::vector<uint8_t> B(100, 0);
+    C[0] = B[0] = 1;
     for (int i = 0; i < numSyndromes; ++i) {
-        std::cout << ">>>>>>>>>>> step " << i << std::endl;
-        std::cout << (int)i << " ";
-        std::cout << (int)L << " ";
-        std::cout << (int)m << " ";
-        std::cout << (int)b << std::endl;
-
         uint8_t discrepancy = syndromes[i];
-        std::cout << "S" << i << " + ";
-        CV_Assert(L <= C.size() - 1);
         for (int j = 1; j <= L; ++j) {
-            std::cout << "C" << j << "*S" << i - j << " + ";
             discrepancy ^= gfMul(C[j], syndromes[i - j]);
         }
-        std::cout << std::endl;
-        std::cout << "discrepancy " << (int)discrepancy << std::endl;
 
         if (discrepancy == 0) {
-            std::cout << "step 4" << std::endl;
             m += 1;
         } else {
-            std::cout << "step 5" << std::endl;
             std::vector<uint8_t> C_copy = C;
             uint8_t inv_b = gf_exp[255 - gf_log[b]];
-            CV_Assert(gfMul(b, inv_b) == 1);
-
             uint8_t tmp = gfMul(discrepancy, inv_b);
 
-            if (i >= m) {
-                std::cout << "1 -> C" << 1 + i - m << std::endl;
-                C[1 + i - m] ^= tmp;
-            }
-            // for (int j = 0; j <= i - m; ++j) {
-            //     std::cout << "B" << 1 + j << " -> C" << m + j << std::endl;
-            //     C[m + j] ^= gfMul(tmp, B[1 + j]);
-            // }
-
-            // Sanity check
-            if (i > 0) {
-                discrepancy = syndromes[i];
-                for (int j = 1; j <= L; ++j) {
-                    discrepancy ^= gfMul(C[j], syndromes[i - j]);
-                }
-                CV_CheckEQ(discrepancy, 0, "");
+            for (int j = 0; j < L; ++j) {
+                C[m + j] ^= gfMul(tmp, B[j]);
             }
 
             if (2 * L <= i) {
-            std::cout << "step 6" << std::endl;
                 L = i + 1 - L;
                 B = C_copy;
                 b = discrepancy;
                 m = 1;
             } else {
-            std::cout << "step 7" << std::endl;
                 m += 1;
             }
         }
-        std::cout << std::endl;
     }
-
-    // Sanity check for sigmas
-    // for (int j = 1; j <= numPoses; ++j) {
-    //     uint8_t sum = syndromes[syndromes.size() - j];
-    //     for (int i = 1; i <= L; ++i) {
-    //         std::cout << syndromes.size() - j - i << std::endl;
-    //         sum ^= gfMul(C[i], syndromes[syndromes.size() - j - i]);
-    //     }
-    //     CV_CheckEQ(sum, 0, "");
-    // }
-
-    // for (int i = 0; i < C.size(); ++i)
-    //     std::cout << (int)C[i] << " ";
-    // std::cout << std::endl;
-
-    // std::cout << "-----------------" << std::endl;
 
     // There is an error at i-th position if i is a root of locator poly
     std::vector<uint8_t> errLocs;
     errLocs.reserve(L);
     for (int i = 0; i < codewords.size(); ++i) {
         uint8_t val = 1;
-        // uint8_t pos = i;
         uint8_t pos = gfPow(2, i);
         for (size_t j = 1; j <= L; ++j) {
             val = gfMul(val, pos) ^ C[j];
         }
         if (val == 0)
             errLocs.push_back(codewords.size() - 1 - i);
-            std::cout << i << " " << (int)val << std::endl;
     }
-    for (int v : errLocs)
-    std::cout << "error loc " << v << std::endl;
-
-
-    // int numPoses = numSyndromes / 2;
-
-    // Find error positions by solving a system of linear equations
-    // Mat A(numPoses, numPoses, CV_64F);
-    // Mat b(numPoses, 1, CV_64F);
-    // for (int i = 0; i < numPoses; ++i) {
-    //     b.at<double>(i) = -(double)syndromes[numPoses + i];
-    //     for (int j = 0; j < numPoses; ++j) {
-    //         A.at<double>(i, j) = (j % 2 ? -1 : 1) * (double)syndromes[i + j];
-    //     }
-    // }
-    // std::cout << A << std::endl;
-    // std::cout << b << std::endl;
-
-    // int val1, val2;
-    // bool solved = false;
-    // for (int a = 0; a < 256; ++a) {
-    //     for (int b = 0; b < 256; ++b) {
-    //         val1 = syndromes[0] * a - syndromes[1] * b;
-    //         val2 = syndromes[1] * a - syndromes[2] * b;
-    //         while (val1 < 0) {
-    //             val1 += 256;
-    //         }
-    //         while (val2 < 0) {
-    //             val2 += 256;
-    //         }
-    //         val1 %= 256;
-    //         val2 %= 256;
-    //         if (val1 == 256 - syndromes[2] && val2 == 256 - syndromes[3]) {
-    //             std::cout << "root " << val1 << " " << val2 << std::endl;
-    //             solved = true;
-    //             break;
-    //         }
-    //     }
-    //     if (solved)
-    //         break;
-    // }
-    // std::vector<int> digits;
-    // for (int a = 0; a < 256; ++a) {
-    //     if ((val1 + val2 * a) % 256 == 0)
-    //         digits.push_back(a);
-    // }
-    // for (int d : digits) {
-    //     std::cout << "root " << d << std::endl;
-    // }
-
-    // // std::vector<double> sigmas;
-    // // solveLinear(A, b, sigmas);
-    // // for (size_t i = 0; i < sigmas.size(); ++i) {
-    // //     std::cout << "sigma " << sigmas[i] << std::endl;
-    // // }
-
-    // // for (int i = 0; i < 256; ++i) {
-    // //     double val = sigmas[0];
-    // //     uint32_t prod = i;
-    // //     for (size_t j = 1; j < sigmas.size(); ++j) {
-    // //         val += sigmas[j] * (prod % 256);
-    // //         prod *= i;
-    // //     }
-    // //     val += (prod % 256);
-    // //     if (abs(val) < 1e-1)
-    // //         std::cout << i << " " << val << std::endl;
-    // // }
+    CV_CheckEQ((int)errLocs.size(), L, "Number of error positions");
 }
 
 void QRCodeDecoder::extractCodewords(Mat& source, std::vector<uint8_t>& codewords) {
