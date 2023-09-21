@@ -1385,6 +1385,14 @@ void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
 
     CV_Assert(numSyndromes % 2 == 0);
 
+    for (size_t j = 0; j < codewords.size(); ++j) {
+        std::cout << (int)codewords[j] << " ";
+    }
+    std::cout << std::endl;
+
+    codewords[0] = 255;
+    // codewords[1] = 255;
+
     // Compute syndromes
     bool hasError = false;
     std::vector<uint8_t> syndromes(numSyndromes, codewords[0]);
@@ -1392,11 +1400,114 @@ void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
         for (size_t j = 1; j < codewords.size(); ++j) {
             syndromes[i] = gfMul(syndromes[i], (1 << i % 8)) ^ codewords[j];
         }
+        std::cout << "sybndrome " << (int)syndromes[i] << std::endl;
         hasError |= syndromes[i];
     }
-    if (hasError) {
-        CV_Error(Error::StsNotImplemented, "Error correction");
+    if (!hasError)
+        return;
+
+    // Run Berlekamp–Massey algorithm to find error positions (coefficients of locator poly)
+    int L = 0;
+    int m = 1;
+    uint8_t b = 1;
+
+    int numPoses = numSyndromes / 2;
+
+    std::vector<uint8_t> C(100, 1);
+    std::vector<uint8_t> B(100, 1);
+    for (int i = 0; i < numSyndromes; ++i) {
+        std::cout << ">>>>>>>>>>> step " << i << std::endl;
+        std::cout << (int)i << " ";
+        std::cout << (int)L << " ";
+        std::cout << (int)m << " ";
+        std::cout << (int)b << std::endl;
+
+        uint8_t discrepancy = syndromes[i];
+        std::cout << "S" << i << " + ";
+        CV_Assert(L <= C.size() - 1);
+        for (int j = 1; j <= L; ++j) {
+            std::cout << "C" << j << "*S" << i - j << " + ";
+            discrepancy ^= gfMul(C[j], syndromes[i - j]);
+        }
+        std::cout << std::endl;
+        std::cout << "discrepancy " << (int)discrepancy << std::endl;
+
+        if (discrepancy == 0) {
+            std::cout << "step 4" << std::endl;
+            m += 1;
+        } else {
+            std::cout << "step 5" << std::endl;
+            std::vector<uint8_t> C_copy = C;
+            uint8_t inv_b = gf_exp[255 - gf_log[b]];
+            CV_Assert(gfMul(b, inv_b) == 1);
+
+            uint8_t tmp = gfMul(discrepancy, inv_b);
+
+            if (i >= m) {
+                std::cout << "1 -> C" << 1 + i - m << std::endl;
+                C[1 + i - m] ^= tmp;
+            }
+            // for (int j = 0; j <= i - m; ++j) {
+            //     std::cout << "B" << 1 + j << " -> C" << m + j << std::endl;
+            //     C[m + j] ^= gfMul(tmp, B[1 + j]);
+            // }
+
+            // Sanity check
+            if (i > 0) {
+                discrepancy = syndromes[i];
+                for (int j = 1; j <= L; ++j) {
+                    discrepancy ^= gfMul(C[j], syndromes[i - j]);
+                }
+                CV_CheckEQ(discrepancy, 0, "");
+            }
+
+            if (2 * L <= i) {
+            std::cout << "step 6" << std::endl;
+                L = i + 1 - L;
+                B = C_copy;
+                b = discrepancy;
+                m = 1;
+            } else {
+            std::cout << "step 7" << std::endl;
+                m += 1;
+            }
+        }
+        std::cout << std::endl;
     }
+
+    // Sanity check for sigmas
+    // for (int j = 1; j <= numPoses; ++j) {
+    //     uint8_t sum = syndromes[syndromes.size() - j];
+    //     for (int i = 1; i <= L; ++i) {
+    //         std::cout << syndromes.size() - j - i << std::endl;
+    //         sum ^= gfMul(C[i], syndromes[syndromes.size() - j - i]);
+    //     }
+    //     CV_CheckEQ(sum, 0, "");
+    // }
+
+    // for (int i = 0; i < C.size(); ++i)
+    //     std::cout << (int)C[i] << " ";
+    // std::cout << std::endl;
+
+    // std::cout << "-----------------" << std::endl;
+
+    // There is an error at i-th position if i is a root of locator poly
+    std::vector<uint8_t> errLocs;
+    errLocs.reserve(L);
+    for (int i = 0; i < codewords.size(); ++i) {
+        uint8_t val = 1;
+        // uint8_t pos = i;
+        uint8_t pos = gfPow(2, i);
+        for (size_t j = 1; j <= L; ++j) {
+            val = gfMul(val, pos) ^ C[j];
+        }
+        if (val == 0)
+            errLocs.push_back(codewords.size() - 1 - i);
+            std::cout << i << " " << (int)val << std::endl;
+    }
+    for (int v : errLocs)
+    std::cout << "error loc " << v << std::endl;
+
 
     // int numPoses = numSyndromes / 2;
 
