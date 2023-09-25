@@ -1683,22 +1683,23 @@ void QRCodeDecoder::extractCodewords(Mat& source, std::vector<uint8_t>& codeword
 void QRCodeDecoder::decodeSymbols(String& result) {
     CV_Assert(!bitstream.data.empty());
 
-    // Determine mode
-    QRCodeEncoder::EncodeMode mode = static_cast<QRCodeEncoder::EncodeMode>(bitstream.next(4));
-
     // Decode depends on the mode
+    QRCodeEncoder::EncodeMode mode;
     result = "";
-    switch (mode)
-    {
-        case QRCodeEncoder::EncodeMode::MODE_NUMERIC:
-            return decodeNumeric(result);
-        case QRCodeEncoder::EncodeMode::MODE_ALPHANUMERIC:
-            return decodeAlpha(result);
-        case QRCodeEncoder::EncodeMode::MODE_BYTE:
-            return decodeByte(result);
-        case QRCodeEncoder::EncodeMode::MODE_ECI:
-            return decodeECI(result);
-        default:
+    while (true) {
+        // Determine mode
+        mode = static_cast<QRCodeEncoder::EncodeMode>(bitstream.next(4));
+        if (mode == QRCodeEncoder::EncodeMode::MODE_NUMERIC)
+            decodeNumeric(result);
+        else if (mode == QRCodeEncoder::EncodeMode::MODE_ALPHANUMERIC)
+            decodeAlpha(result);
+        else if (mode == QRCodeEncoder::EncodeMode::MODE_BYTE)
+            decodeByte(result);
+        else if (mode == QRCodeEncoder::EncodeMode::MODE_ECI)
+            decodeECI(result);
+        else if (mode == 0)  // terminator bits
+            return;
+        else
             CV_Error(Error::StsNotImplemented, format("mode %d", mode));
     }
 }
