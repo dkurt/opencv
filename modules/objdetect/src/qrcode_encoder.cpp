@@ -21,6 +21,7 @@ const uint8_t INVALID_REGION_VALUE = 110;
 static void decToBin(const int dec_number, const int total_bits, std::vector<uint8_t> &bin_number);
 static uint8_t gfPow(uint8_t x, int power);
 static uint8_t gfMul(const uint8_t x, const uint8_t y);
+static uint8_t gfDiv(const uint8_t x, const uint8_t y);
 static void gfPolyMul(const vector<uint8_t> &p, const vector<uint8_t> &q, vector<uint8_t> &product);
 static void gfPolyDiv(const vector<uint8_t> &dividend, const vector<uint8_t> &divisor, const int ecc_num, vector<uint8_t> &quotient);
 static void polyGenerator(const int n, vector<uint8_t> &result);
@@ -51,6 +52,13 @@ static uint8_t gfMul(const uint8_t x, const uint8_t y)
     if (x == 0 || y == 0)
         return 0;
     return gf_exp[(gf_log[x] + gf_log[y]) % 255];
+}
+
+static uint8_t gfDiv(const uint8_t x, const uint8_t y)
+{
+    if (x == 0 || y == 0)
+        return 0;
+    return gf_exp[(gf_log[x] + 255 - gf_log[y]) % 255];
 }
 
 static void gfPolyMul(const vector<uint8_t> &p, const vector<uint8_t> &q, vector<uint8_t> &product)
@@ -1390,7 +1398,7 @@ void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
     std::vector<uint8_t> syndromes(numSyndromes, codewords[0]);
     for (size_t i = 0; i < syndromes.size(); ++i) {
         for (size_t j = 1; j < codewords.size(); ++j) {
-            syndromes[i] = gfMul(syndromes[i], (1 << i % 8)) ^ codewords[j];
+            syndromes[i] = gfMul(syndromes[i], gfPow(2, i)) ^ codewords[j];
         }
         hasError |= syndromes[i];
     }
@@ -1410,6 +1418,7 @@ void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
     for (int i = 0; i < numSyndromes; ++i) {
         uint8_t discrepancy = syndromes[i];
         for (int j = 1; j <= L; ++j) {
+            CV_Assert(j < C.size());  // TODO: remove check
             discrepancy ^= gfMul(C[j], syndromes[i - j]);
         }
 
@@ -1421,6 +1430,7 @@ void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
             uint8_t tmp = gfMul(discrepancy, inv_b);
 
             for (int j = 0; j < L; ++j) {
+                CV_Assert(m + j < C.size());  // TODO: remove check
                 C[m + j] ^= gfMul(tmp, B[j]);
             }
 
@@ -1444,10 +1454,39 @@ void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
         for (size_t j = 1; j <= L; ++j) {
             val = gfMul(val, pos) ^ C[j];
         }
-        if (val == 0)
+        if (val == 0) {
             errLocs.push_back(codewords.size() - 1 - i);
+        }
     }
     CV_CheckEQ((int)errLocs.size(), L, "Number of error positions");
+
+    // Forney algorithm for error correction using syndromes and known error locations
+    std::vector<uint8_t> errEval;
+    gfPolyMul(C, syndromes, errEval);
+
+    for (int i = 0; i < errLocs.size(); ++i) {
+        uint8_t numenator = 0, denominator = 0;
+        uint8_t inv_X = gfPow(2, 255 - (codewords.size() - 1 - errLocs[i]));
+        uint8_t X = gf_exp[255 - gf_log[inv_X]];
+
+        for (int j = 0; j < numPoses; ++j) {
+            numenator = gfMul(numenator, inv_X) ^ errEval[numPoses - 1 - j];
+        }
+
+        // Compute demoninator as a product of (1-X_i * X_k) for i != k
+        // TODO: optimize, there is a dubplicated compute
+        denominator = 1;
+        for (int j = 0; j < errLocs.size(); ++j) {
+            if (i == j)
+                continue;
+            uint8_t inv_Xj = gfPow(2, 255 - (codewords.size() - 1 - errLocs[j]));
+            uint8_t Xj = gf_exp[255 - gf_log[inv_Xj]];
+            denominator = gfMul(denominator, 1 ^ gfMul(inv_X, Xj));
+        }
+
+        uint8_t errValue = gfDiv(numenator, denominator);
+        codewords[errLocs[i]] ^= errValue;
+    }
 }
 
 void QRCodeDecoder::extractCodewords(Mat& source, std::vector<uint8_t>& codewords) {
