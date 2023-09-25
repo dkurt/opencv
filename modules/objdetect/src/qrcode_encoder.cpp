@@ -1318,6 +1318,7 @@ private:
     void decodeFormatInfo(const Mat& straight, int& mask);
     void extractCodewords(Mat& source, std::vector<uint8_t>& codewords);
     void errorCorrection(std::vector<uint8_t>& codewords);
+    void errorCorrectionBlock(uint8_t* codewords, size_t numCodewords);
     void decodeSymbols(String& result);
     void decodeNumeric(String& result);
     void decodeAlpha(String& result);
@@ -1377,6 +1378,56 @@ void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
     CV_CheckEQ((int)codewords.size(), version_info_database[version].total_codewords,
                "Number of codewords");
 
+    // TODO: starting from version 23 there are 3 blocks
+    int numBlocks = version_info_database[version].ecc[level].num_blocks_in_G1 +
+                    version_info_database[version].ecc[level].num_blocks_in_G2;
+    if (numBlocks == 1) {
+        errorCorrectionBlock(codewords.data(), codewords.size());
+        return;
+    }
+
+    std::vector<int> blockSizes;
+    blockSizes.reserve(numBlocks);
+    for (int i = 0; i < version_info_database[version].ecc[level].num_blocks_in_G1; ++i) {
+        blockSizes.push_back(version_info_database[version].ecc[level].data_codewords_in_G1);
+    }
+    for (int i = 0; i < version_info_database[version].ecc[level].num_blocks_in_G2; ++i) {
+        blockSizes.push_back(version_info_database[version].ecc[level].data_codewords_in_G2);
+    }
+
+
+    // TODO: parallel_for
+    std::vector<std::vector<uint8_t>> blocks(numBlocks);
+    int minBlockSize = *std::min_element(blockSizes.begin(), blockSizes.end());
+    int offset = 0;
+    for (int i = 0; i < minBlockSize; ++i) {
+        for (int j = 0; j < numBlocks; ++j) {
+            blocks[j].push_back(codewords[offset++]);
+        }
+    }
+    // Put remaining data codewords
+    for (int j = 0; j < numBlocks; ++j) {
+        CV_Assert(blockSizes[j] == minBlockSize || blockSizes[j] == minBlockSize + 1);
+        if (blockSizes[j] > minBlockSize)
+            blocks[j].push_back(codewords[offset++]);
+    }
+    // Copy error correction codewords
+    int numEcc = version_info_database[version].ecc[level].ecc_codewords;
+    for (int i = 0; i < numEcc; ++i) {
+        for (int j = 0; j < numBlocks; ++j) {
+            blocks[j].push_back(codewords[offset++]);
+        }
+    }
+
+    std::vector<uint8_t> finalCodewords;
+    for (int i = 0; i < numBlocks; ++i) {
+        errorCorrectionBlock(blocks[i].data(), blocks[i].size());
+        finalCodewords.insert(finalCodewords.end(), blocks[i].begin(), blocks[i].begin() + blockSizes[i]);
+    }
+    codewords = finalCodewords;
+}
+
+void QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords) {
     int numSyndromes = version_info_database[version].ecc[level].ecc_codewords;
     if (version == 3 && level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_L)
         numSyndromes -= 1;
@@ -1397,7 +1448,7 @@ void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
     bool hasError = false;
     std::vector<uint8_t> syndromes(numSyndromes, codewords[0]);
     for (size_t i = 0; i < syndromes.size(); ++i) {
-        for (size_t j = 1; j < codewords.size(); ++j) {
+        for (size_t j = 1; j < numCodewords; ++j) {
             syndromes[i] = gfMul(syndromes[i], gfPow(2, i)) ^ codewords[j];
         }
         hasError |= syndromes[i];
@@ -1445,17 +1496,25 @@ void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
         }
     }
 
+    // Sanity check for error locator poly
+    // for (int i = 0; i < numPoses; ++i) {
+    //     uint8_t val = syndromes[numPoses + i];
+    //     for (int j = 0; j < numPoses; ++j)
+    //         val ^= gfMul(syndromes[i + j], C[numPoses - j]);
+    //     CV_CheckEQ(val, 0, "Locator poly check failed");
+    // }
+
     // There is an error at i-th position if i is a root of locator poly
     std::vector<uint8_t> errLocs;
     errLocs.reserve(L);
-    for (int i = 0; i < codewords.size(); ++i) {
+    for (int i = 0; i < numCodewords; ++i) {
         uint8_t val = 1;
         uint8_t pos = gfPow(2, i);
         for (size_t j = 1; j <= L; ++j) {
             val = gfMul(val, pos) ^ C[j];
         }
         if (val == 0) {
-            errLocs.push_back(codewords.size() - 1 - i);
+            errLocs.push_back(numCodewords - 1 - i);
         }
     }
     CV_CheckEQ((int)errLocs.size(), L, "Number of error positions");
@@ -1466,7 +1525,7 @@ void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
 
     for (int i = 0; i < errLocs.size(); ++i) {
         uint8_t numenator = 0, denominator = 0;
-        uint8_t inv_X = gfPow(2, 255 - (codewords.size() - 1 - errLocs[i]));
+        uint8_t inv_X = gfPow(2, 255 - (numCodewords - 1 - errLocs[i]));
         uint8_t X = gf_exp[255 - gf_log[inv_X]];
 
         for (int j = 0; j < numPoses; ++j) {
@@ -1479,7 +1538,7 @@ void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
         for (int j = 0; j < errLocs.size(); ++j) {
             if (i == j)
                 continue;
-            uint8_t inv_Xj = gfPow(2, 255 - (codewords.size() - 1 - errLocs[j]));
+            uint8_t inv_Xj = gfPow(2, 255 - (numCodewords - 1 - errLocs[j]));
             uint8_t Xj = gf_exp[255 - gf_log[inv_Xj]];
             denominator = gfMul(denominator, 1 ^ gfMul(inv_X, Xj));
         }
