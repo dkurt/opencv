@@ -1704,7 +1704,7 @@ void QRCodeDecoder::decodeSymbols(String& result) {
 }
 
 void QRCodeDecoder::decodeNumeric(String& result) {
-    int numDigits = bitstream.next(10);
+    int numDigits = bitstream.next(version <= 9 ? 10 : (version <= 26 ? 12 : 14));
     for (int i = 0; i < numDigits / 3; ++i) {
         int triple = bitstream.next(10);
         result += '0' + triple / 100;
@@ -1721,7 +1721,7 @@ void QRCodeDecoder::decodeNumeric(String& result) {
 }
 
 void QRCodeDecoder::decodeAlpha(String& result) {
-    int num = bitstream.next(9);
+    int num = bitstream.next(version <= 9 ? 9 : (version <= 26 ? 11 : 13));
     for (int i = 0; i < num / 2; ++i) {
         int tuple = bitstream.next(11);
         result += mapToSymbol(tuple / 45);
@@ -1734,7 +1734,7 @@ void QRCodeDecoder::decodeAlpha(String& result) {
 }
 
 void QRCodeDecoder::decodeByte(String& result) {
-    int num = bitstream.next(8);
+    int num = bitstream.next(version <= 9 ? 8 : 16);
     for (int i = 0; i < num; ++i) {
         result += bitstream.next(8);
     }
