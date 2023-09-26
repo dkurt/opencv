@@ -1286,6 +1286,8 @@ private:
 
     struct Bitstream {
         int next(int bits) {
+            CV_Assert(idx < data.size());
+
             int val = 0;
             while (bits >= actualBits) {
                 val |= data[idx++] << (bits - actualBits);
@@ -1300,20 +1302,14 @@ private:
             return val;
         }
 
+        bool empty() {
+            return idx >= data.size();
+        }
+
         std::vector<uint8_t> data;
         int actualBits = 8;
         int idx = 0;
     } bitstream;
-
-    static inline char mapToSymbol(int v)
-    {
-        static char map[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-                            'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
-                            'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
-                            'U', 'V', 'W', 'X', 'Y', 'Z', ' ', '$', '%', '*',
-                            '+', '-', '.', '/', ':'};
-        return map[v];
-    }
 
     void decodeFormatInfo(const Mat& straight, int& mask);
     void extractCodewords(Mat& source, std::vector<uint8_t>& codewords);
@@ -1457,16 +1453,17 @@ void QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords
         return;
 
     // Run Berlekamp–Massey algorithm to find error positions (coefficients of locator poly)
-    int L = 0;
-    int m = 1;
-    uint8_t b = 1;
+    int L = 0;      // number of assumed errors
+    int m = 1;      // shift value (between C and B)
+    uint8_t b = 1;  // discrepancy from last L update
 
     int numPoses = numSyndromes / 2;
 
-    std::vector<uint8_t> C(numPoses + 1, 0);  // Error locator polynomial
-    std::vector<uint8_t> B(numPoses + 1, 0);  // A copy of error locator from previos L update
+    std::vector<uint8_t> C(numSyndromes, 0);  // Error locator polynomial
+    std::vector<uint8_t> B(numSyndromes, 0);  // A copy of error locator from previos L update
     C[0] = B[0] = 1;
     for (int i = 0; i < numSyndromes; ++i) {
+        CV_Assert(m + L - 1 < C.size());  // m >= 1 on any iteration
         uint8_t discrepancy = syndromes[i];
         for (int j = 1; j <= L; ++j) {
             discrepancy ^= gfMul(C[j], syndromes[i - j]);
@@ -1476,7 +1473,7 @@ void QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords
             m += 1;
         } else {
             std::vector<uint8_t> C_copy = C;
-            uint8_t inv_b = gf_exp[255 - gf_log[b]];
+            uint8_t inv_b = gfDiv(1, b);
             uint8_t tmp = gfMul(discrepancy, inv_b);
 
             for (int j = 0; j < L; ++j) {
@@ -1523,7 +1520,8 @@ void QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords
 
     for (size_t i = 0; i < errLocs.size(); ++i) {
         uint8_t numenator = 0, denominator = 0;
-        uint8_t inv_X = gfPow(2, 255 - (numCodewords - 1 - errLocs[i]));
+        uint8_t X = gfPow(2, numCodewords - 1 - errLocs[i]);
+        uint8_t inv_X = gfDiv(1, X);
 
         for (int j = 0; j < numPoses; ++j) {
             numenator = gfMul(numenator, inv_X) ^ errEval[numPoses - 1 - j];
@@ -1535,8 +1533,8 @@ void QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords
         for (int j = 0; j < errLocs.size(); ++j) {
             if (i == j)
                 continue;
-            uint8_t inv_Xj = gfPow(2, 255 - (numCodewords - 1 - errLocs[j]));
-            uint8_t Xj = gf_exp[255 - gf_log[inv_Xj]];
+            uint8_t Xj = gfPow(2, numCodewords - 1 - errLocs[j]);
+            uint8_t inv_Xj = gfDiv(1, Xj);
             denominator = gfMul(denominator, 1 ^ gfMul(inv_X, Xj));
         }
 
@@ -1678,12 +1676,12 @@ void QRCodeDecoder::extractCodewords(Mat& source, std::vector<uint8_t>& codeword
 }
 
 void QRCodeDecoder::decodeSymbols(String& result) {
-    CV_Assert(!bitstream.data.empty());
+    CV_Assert(!bitstream.empty());
 
     // Decode depends on the mode
     QRCodeEncoder::EncodeMode mode;
     result = "";
-    while (true) {
+    while (!bitstream.empty()) {
         // Determine mode
         mode = static_cast<QRCodeEncoder::EncodeMode>(bitstream.next(4));
         if (mode == QRCodeEncoder::EncodeMode::MODE_NUMERIC)
@@ -1705,29 +1703,31 @@ void QRCodeDecoder::decodeNumeric(String& result) {
     int numDigits = bitstream.next(version <= 9 ? 10 : (version <= 26 ? 12 : 14));
     for (int i = 0; i < numDigits / 3; ++i) {
         int triple = bitstream.next(10);
-        result += '0' + triple / 100;
-        result += '0' + (triple / 10) % 10;
-        result += '0' + triple % 10;
+        result += std::to_string(triple);
     }
     int remainingDigits = numDigits % 3;
     if (remainingDigits) {
         int triple = bitstream.next(remainingDigits == 1 ? 4 : 7);
-        if (remainingDigits == 2)
-            result += '0' + (triple / 10) % 10;
-        result += '0' + triple % 10;
+        result += std::to_string(triple);
     }
 }
 
 void QRCodeDecoder::decodeAlpha(String& result) {
+    static char map[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+                         'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
+                         'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
+                         'U', 'V', 'W', 'X', 'Y', 'Z', ' ', '$', '%', '*',
+                         '+', '-', '.', '/', ':'};
+
     int num = bitstream.next(version <= 9 ? 9 : (version <= 26 ? 11 : 13));
     for (int i = 0; i < num / 2; ++i) {
         int tuple = bitstream.next(11);
-        result += mapToSymbol(tuple / 45);
-        result += mapToSymbol(tuple % 45);
+        result += map[tuple / 45];
+        result += map[tuple % 45];
     }
     if (num % 2) {
         int value = bitstream.next(6);
-        result += mapToSymbol(value);
+        result += map[value];
     }
 }
 
