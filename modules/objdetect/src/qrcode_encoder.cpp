@@ -1314,8 +1314,8 @@ private:
     bool decodeFormatInfo(const Mat& straight, int& mask);
     bool correctFormatInfo(int& format_info);
     void extractCodewords(Mat& source, std::vector<uint8_t>& codewords);
-    void errorCorrection(std::vector<uint8_t>& codewords);
-    void errorCorrectionBlock(uint8_t* codewords, size_t numCodewords);
+    bool errorCorrection(std::vector<uint8_t>& codewords);
+    bool errorCorrectionBlock(uint8_t* codewords, size_t numCodewords);
     void decodeSymbols(String& result);
     void decodeNumeric(String& result);
     void decodeAlpha(String& result);
@@ -1406,11 +1406,12 @@ bool QRCodeDecoder::run(const Mat& straight, String& decoded_info) {
     CV_Assert(straight.rows == straight.cols);
     version = (straight.rows - 21) / 4 + 1;
 
+    decoded_info = "";
+
     // Decode format info
     int maskPattern;
     bool decoded = decodeFormatInfo(straight, maskPattern);
     if (!decoded) {
-        decoded_info = "";
         return false;
     }
 
@@ -1420,12 +1421,14 @@ bool QRCodeDecoder::run(const Mat& straight, String& decoded_info) {
     masked /= 255;  // TODO: avoid division
 
     extractCodewords(masked, bitstream.data);
-    errorCorrection(bitstream.data);
+    if (!errorCorrection(bitstream.data)) {
+        return false;
+    }
     decodeSymbols(decoded_info);
     return true;
 }
 
-void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
+bool QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
     CV_CheckEQ((int)codewords.size(), version_info_database[version].total_codewords,
                "Number of codewords");
 
@@ -1433,8 +1436,7 @@ void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
     int numBlocks = version_info_database[version].ecc[level].num_blocks_in_G1 +
                     version_info_database[version].ecc[level].num_blocks_in_G2;
     if (numBlocks == 1) {
-        errorCorrectionBlock(codewords.data(), codewords.size());
-        return;
+        return errorCorrectionBlock(codewords.data(), codewords.size());
     }
 
     std::vector<int> blockSizes;
@@ -1472,13 +1474,16 @@ void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
 
     std::vector<uint8_t> finalCodewords;
     for (int i = 0; i < numBlocks; ++i) {
-        errorCorrectionBlock(blocks[i].data(), blocks[i].size());
+        bool corrected = errorCorrectionBlock(blocks[i].data(), blocks[i].size());
+        if (!corrected)
+            return false;
         finalCodewords.insert(finalCodewords.end(), blocks[i].begin(), blocks[i].begin() + blockSizes[i]);
     }
     codewords = finalCodewords;
+    return true;
 }
 
-void QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords) {
+bool QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords) {
     int numSyndromes = version_info_database[version].ecc[level].ecc_codewords;
     if (version == 3 && level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_L)
         numSyndromes -= 1;
@@ -1505,7 +1510,7 @@ void QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords
         hasError |= syndromes[i];
     }
     if (!hasError)
-        return;
+        return true;
 
     // Run Berlekamp–Massey algorithm to find error positions (coefficients of locator poly)
     int L = 0;      // number of assumed errors
@@ -1567,7 +1572,10 @@ void QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords
             errLocs.push_back(numCodewords - 1 - i);
         }
     }
-    CV_CheckEQ((int)errLocs.size(), L, "Number of error positions");
+
+    // Number of assumed errors does not match number of error locations
+    if ((int)errLocs.size() != L)
+        return false;
 
     // Forney algorithm for error correction using syndromes and known error locations
     std::vector<uint8_t> errEval;
@@ -1596,6 +1604,7 @@ void QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords
         uint8_t errValue = gfDiv(numenator, denominator);
         codewords[errLocs[i]] ^= errValue;
     }
+    return true;
 }
 
 void QRCodeDecoder::extractCodewords(Mat& source, std::vector<uint8_t>& codewords) {
