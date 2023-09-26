@@ -1308,7 +1308,7 @@ private:
 
         std::vector<uint8_t> data;
         int actualBits = 8;
-        int idx = 0;
+        size_t idx = 0;
     } bitstream;
 
     bool decodeFormatInfo(const Mat& straight, int& mask);
@@ -1489,7 +1489,7 @@ bool QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
 }
 
 bool QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords) {
-    int numSyndromes = version_info_database[version].ecc[level].ecc_codewords;
+    size_t numSyndromes = version_info_database[version].ecc[level].ecc_codewords;
     if (version == 3 && level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_L)
         numSyndromes -= 1;
     else if (version == 2 && level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_L)
@@ -1518,8 +1518,8 @@ bool QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords
         return true;
 
     // Run Berlekamp–Massey algorithm to find error positions (coefficients of locator poly)
-    int L = 0;      // number of assumed errors
-    int m = 1;      // shift value (between C and B)
+    size_t L = 0;   // number of assumed errors
+    size_t m = 1;   // shift value (between C and B)
     uint8_t b = 1;  // discrepancy from last L update
 
     int numPoses = numSyndromes / 2;
@@ -1527,10 +1527,10 @@ bool QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords
     std::vector<uint8_t> C(numSyndromes, 0);  // Error locator polynomial
     std::vector<uint8_t> B(numSyndromes, 0);  // A copy of error locator from previos L update
     C[0] = B[0] = 1;
-    for (int i = 0; i < numSyndromes; ++i) {
+    for (size_t i = 0; i < numSyndromes; ++i) {
         CV_Assert(m + L - 1 < C.size());  // m >= 1 on any iteration
         uint8_t discrepancy = syndromes[i];
-        for (int j = 1; j <= L; ++j) {
+        for (size_t j = 1; j <= L; ++j) {
             discrepancy ^= gfMul(C[j], syndromes[i - j]);
         }
 
@@ -1541,7 +1541,7 @@ bool QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords
             uint8_t inv_b = gfDiv(1, b);
             uint8_t tmp = gfMul(discrepancy, inv_b);
 
-            for (int j = 0; j < L; ++j) {
+            for (size_t j = 0; j < L; ++j) {
                 C[m + j] ^= gfMul(tmp, B[j]);
             }
 
@@ -1567,7 +1567,7 @@ bool QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords
     // There is an error at i-th position if i is a root of locator poly
     std::vector<uint8_t> errLocs;
     errLocs.reserve(L);
-    for (int i = 0; i < numCodewords; ++i) {
+    for (size_t i = 0; i < numCodewords; ++i) {
         uint8_t val = 1;
         uint8_t pos = gfPow(2, i);
         for (size_t j = 1; j <= L; ++j) {
@@ -1579,7 +1579,7 @@ bool QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords
     }
 
     // Number of assumed errors does not match number of error locations
-    if ((int)errLocs.size() != L)
+    if (errLocs.size() != L)
         return false;
 
     // Forney algorithm for error correction using syndromes and known error locations
@@ -1598,11 +1598,10 @@ bool QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords
         // Compute demoninator as a product of (1-X_i * X_k) for i != k
         // TODO: optimize, there is a dubplicated compute
         denominator = 1;
-        for (int j = 0; j < errLocs.size(); ++j) {
+        for (size_t j = 0; j < errLocs.size(); ++j) {
             if (i == j)
                 continue;
             uint8_t Xj = gfPow(2, numCodewords - 1 - errLocs[j]);
-            uint8_t inv_Xj = gfDiv(1, Xj);
             denominator = gfMul(denominator, 1 ^ gfMul(inv_X, Xj));
         }
 
