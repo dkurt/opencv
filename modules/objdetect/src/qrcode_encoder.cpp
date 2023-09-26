@@ -1274,11 +1274,11 @@ Ptr<QRCodeEncoder> QRCodeEncoder::create(const QRCodeEncoder::Params& parameters
 
 // QRCodeDecoder
 
-void decode(const Mat& straight, String& decoded_info);
+bool decode(const Mat& straight, String& decoded_info);
 
 class QRCodeDecoder {
 public:
-    void run(const Mat& straight, String& decoded_info);
+    bool run(const Mat& straight, String& decoded_info);
 
 private:
     QRCodeEncoder::CorrectionLevel level;
@@ -1323,16 +1323,16 @@ private:
     void decodeECI(String& result);
 };
 
-void decode(const Mat& straight, String& decoded_info) {
+bool decode(const Mat& straight, String& decoded_info) {
     QRCodeDecoder decoder;
-    decoder.run(straight, decoded_info);
+    return decoder.run(straight, decoded_info);
 }
 
 // Unmask format info bits and apply error correction
 bool QRCodeDecoder::correctFormatInfo(int& format_info) {
     // There are only 32 combinations of format info sequences.
     // So lookup table is a simplest way to correct errors.
-    // TODO: encoder can reuse this format info
+    // TODO: encoder can reuse this format info LUT
     static const uint16_t lut[32] = {0x5412, 0x5125, 0x5e7c, 0x5b4b, 0x45f9, 0x40ce, 0x4f97, 0x4aa0,
                                      0x77c4, 0x72f3, 0x7daa, 0x789d, 0x662f, 0x6318, 0x6c41, 0x6976,
                                      0x1689, 0x13be, 0x1ce7, 0x19d0, 0x0762, 0x0255, 0x0d0c, 0x083b,
@@ -1373,17 +1373,23 @@ bool QRCodeDecoder::decodeFormatInfo(const Mat& straight, int& mask) {
     format_info = ~format_info;
     bool correct = correctFormatInfo(format_info);
 
-    if (!correct) {
-        // Format information 15bit sequence appears twice.
-        // Try extract format info from different position.
-        format_info = 0;
-        for (int i = 0; i < 8; ++i)
-            format_info |= (straight.at<uint8_t>(8, straight.cols - 1 - i) & 1) << i;
-        for (int i = 0; i < 7; ++i)
-            format_info |= (straight.at<uint8_t>(straight.rows - 7 + i, 8) & 1) << (i + 8);
-        format_info = ~format_info;
-        if (!correctFormatInfo(format_info))
-            CV_Error(Error::StsError, "Cannot decode format info");
+    // Format information 15bit sequence appears twice.
+    // Try extract format info from different position.
+    int format_info_dup = 0;
+    for (int i = 0; i < 8; ++i)
+        format_info_dup |= (straight.at<uint8_t>(8, straight.cols - 1 - i) & 1) << i;
+    for (int i = 0; i < 7; ++i)
+        format_info_dup |= (straight.at<uint8_t>(straight.rows - 7 + i, 8) & 1) << (i + 8);
+    format_info_dup = ~format_info_dup;
+
+    if (correctFormatInfo(format_info_dup)) {
+        // Both strings must be the same
+        if (correct && format_info != format_info_dup)
+            return false;
+        format_info = format_info_dup;
+    } else {
+        if (!correct)
+            return false;
     }
 
     switch((format_info >> 13) & 0b11) {
@@ -1396,13 +1402,17 @@ bool QRCodeDecoder::decodeFormatInfo(const Mat& straight, int& mask) {
     return true;
 }
 
-void QRCodeDecoder::run(const Mat& straight, String& decoded_info) {
+bool QRCodeDecoder::run(const Mat& straight, String& decoded_info) {
     CV_Assert(straight.rows == straight.cols);
     version = (straight.rows - 21) / 4 + 1;
 
     // Decode format info
     int maskPattern;
-    decodeFormatInfo(straight, maskPattern);
+    bool decoded = decodeFormatInfo(straight, maskPattern);
+    if (!decoded) {
+        decoded_info = "";
+        return false;
+    }
 
     // Generate data mask
     Mat masked = straight.clone();
@@ -1412,6 +1422,7 @@ void QRCodeDecoder::run(const Mat& straight, String& decoded_info) {
     extractCodewords(masked, bitstream.data);
     errorCorrection(bitstream.data);
     decodeSymbols(decoded_info);
+    return true;
 }
 
 void QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {

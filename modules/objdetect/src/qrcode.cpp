@@ -2727,7 +2727,7 @@ bool QRDecode::samplingForVersion()
     return true;
 }
 
-extern void decode(const Mat& straight, String& decoded_info);
+extern bool decode(const Mat& straight, String& decoded_info);
 
 bool QRDecode::decodingProcess()
 {
@@ -2764,8 +2764,7 @@ bool QRDecode::decodingProcess()
     }
     return true;
 #else
-    decode(straight, result_info);
-    return true;
+    return decode(straight, result_info);
 #endif
 
 }
