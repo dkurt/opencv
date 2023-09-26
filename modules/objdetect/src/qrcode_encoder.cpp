@@ -1321,6 +1321,7 @@ private:
     void decodeAlpha(String& result);
     void decodeByte(String& result);
     void decodeECI(String& result);
+    void decodeKanji(String& result);
 };
 
 bool decode(const Mat& straight, String& decoded_info) {
@@ -1756,6 +1757,8 @@ void QRCodeDecoder::decodeSymbols(String& result) {
             decodeByte(result);
         else if (mode == QRCodeEncoder::EncodeMode::MODE_ECI)
             decodeECI(result);
+        else if (mode == QRCodeEncoder::EncodeMode::MODE_KANJI)
+            decodeKanji(result);
         else if (mode == 0)  // terminator bits
             return;
         else
@@ -1807,6 +1810,23 @@ void QRCodeDecoder::decodeECI(String& result) {
     CV_UNUSED(eci_assignment_number);
     decodeSymbols(result);
     // TODO: there should be multiple sets
+}
+
+void QRCodeDecoder::decodeKanji(String& result) {
+    int num = bitstream.next(version <= 9 ? 8 : (version <= 26 ? 10 : 12));
+    for (int i = 0; i < num; ++i) {
+        int data = bitstream.next(13);
+        int high_byte = data / 0xC0;
+        int low_byte = data - high_byte * 0xC0;
+        int symbol = (high_byte << 8) + low_byte;
+        if (0 <= symbol && symbol <= 0x9FFC - 0x8140) {
+            symbol += 0x8140;
+        } else if (0xE040 - 0xC140 <= symbol && symbol <= 0xEBBF - 0xC140) {
+            symbol += 0xC140;
+        }
+        result += (symbol >> 8) & 0xff;
+        result += symbol & 0xff;
+    }
 }
 
 }
