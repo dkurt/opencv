@@ -1324,9 +1324,14 @@ private:
     void decodeKanji(String& result);
 };
 
-bool decode(const Mat& straight, String& decoded_info) {
+bool decode(const Mat& _straight, String& decoded_info) {
     QRCodeDecoder decoder;
-    return decoder.run(straight, decoded_info);
+    if (!decoder.run(_straight, decoded_info)) {
+        Mat straight = _straight.clone();
+        cv::transpose(straight, straight);
+        return decoder.run(straight, decoded_info);
+    }
+    return true;
 }
 
 // Unmask format info bits and apply error correction
@@ -1419,7 +1424,6 @@ bool QRCodeDecoder::run(const Mat& straight, String& decoded_info) {
     // Generate data mask
     Mat masked = straight.clone();
     maskData(straight, maskPattern, masked);
-    masked /= 255;  // TODO: avoid division
 
     extractCodewords(masked, bitstream.data);
     if (!errorCorrection(bitstream.data)) {
@@ -1720,9 +1724,9 @@ void QRCodeDecoder::extractCodewords(Mat& source, std::vector<uint8_t>& codeword
     CV_CheckEQ((int)bits.size(), remainingBits + 8 * version_info.total_codewords,
             "QR code decoding bitstream");
 
-    // invert
+    // invert 0 -> 1 and 255 -> 0
     for (size_t i = 0; i < bits.size(); ++i) {
-        bits[i] = 1 - bits[i];
+        bits[i] = !bits[i];
     }
 
     // Combine bits to codewords
