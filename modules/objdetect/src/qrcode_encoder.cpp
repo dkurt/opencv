@@ -1315,7 +1315,7 @@ private:
     bool correctFormatInfo(int& format_info);
     void extractCodewords(Mat& source, std::vector<uint8_t>& codewords);
     bool errorCorrection(std::vector<uint8_t>& codewords);
-    bool errorCorrectionBlock(uint8_t* codewords, size_t numCodewords);
+    bool errorCorrectionBlock(std::vector<uint8_t>& codewords);
     void decodeSymbols(String& result);
     void decodeNumeric(String& result);
     void decodeAlpha(String& result);
@@ -1441,7 +1441,7 @@ bool QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
     int numBlocks = version_info_database[version].ecc[level].num_blocks_in_G1 +
                     version_info_database[version].ecc[level].num_blocks_in_G2;
     if (numBlocks == 1) {
-        return errorCorrectionBlock(codewords.data(), codewords.size());
+        return errorCorrectionBlock(codewords);
     }
 
     std::vector<int> blockSizes;
@@ -1479,7 +1479,7 @@ bool QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
 
     std::vector<uint8_t> finalCodewords;
     for (int i = 0; i < numBlocks; ++i) {
-        bool corrected = errorCorrectionBlock(blocks[i].data(), blocks[i].size());
+        bool corrected = errorCorrectionBlock(blocks[i]);
         if (!corrected)
             return false;
         finalCodewords.insert(finalCodewords.end(), blocks[i].begin(), blocks[i].begin() + blockSizes[i]);
@@ -1488,8 +1488,9 @@ bool QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
     return true;
 }
 
-bool QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords) {
-    size_t numSyndromes = version_info_database[version].ecc[level].ecc_codewords;
+bool QRCodeDecoder::errorCorrectionBlock(std::vector<uint8_t>& codewords) {
+    size_t numEcc = version_info_database[version].ecc[level].ecc_codewords;
+    size_t numSyndromes = numEcc;
     if (version == 3 && level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_L)
         numSyndromes -= 1;
     else if (version == 2 && level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_L)
@@ -1509,13 +1510,16 @@ bool QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords
     bool hasError = false;
     std::vector<uint8_t> syndromes(numSyndromes, codewords[0]);
     for (size_t i = 0; i < syndromes.size(); ++i) {
-        for (size_t j = 1; j < numCodewords; ++j) {
+        for (size_t j = 1; j < codewords.size(); ++j) {
             syndromes[i] = gfMul(syndromes[i], gfPow(2, i)) ^ codewords[j];
         }
         hasError |= syndromes[i];
     }
-    if (!hasError)
+    if (!hasError) {
+        // Trim error correction codewords
+        codewords.resize(codewords.size() - numEcc);
         return true;
+    }
 
     // Run Berlekamp–Massey algorithm to find error positions (coefficients of locator poly)
     size_t L = 0;   // number of assumed errors
@@ -1567,14 +1571,14 @@ bool QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords
     // There is an error at i-th position if i is a root of locator poly
     std::vector<uint8_t> errLocs;
     errLocs.reserve(L);
-    for (size_t i = 0; i < numCodewords; ++i) {
+    for (size_t i = 0; i < codewords.size(); ++i) {
         uint8_t val = 1;
         uint8_t pos = gfPow(2, i);
         for (size_t j = 1; j <= L; ++j) {
             val = gfMul(val, pos) ^ C[j];
         }
         if (val == 0) {
-            errLocs.push_back(numCodewords - 1 - i);
+            errLocs.push_back(codewords.size() - 1 - i);
         }
     }
 
@@ -1588,7 +1592,7 @@ bool QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords
 
     for (size_t i = 0; i < errLocs.size(); ++i) {
         uint8_t numenator = 0, denominator = 0;
-        uint8_t X = gfPow(2, numCodewords - 1 - errLocs[i]);
+        uint8_t X = gfPow(2, codewords.size() - 1 - errLocs[i]);
         uint8_t inv_X = gfDiv(1, X);
 
         for (int j = 0; j < numPoses; ++j) {
@@ -1601,13 +1605,16 @@ bool QRCodeDecoder::errorCorrectionBlock(uint8_t* codewords, size_t numCodewords
         for (size_t j = 0; j < errLocs.size(); ++j) {
             if (i == j)
                 continue;
-            uint8_t Xj = gfPow(2, numCodewords - 1 - errLocs[j]);
+            uint8_t Xj = gfPow(2, codewords.size() - 1 - errLocs[j]);
             denominator = gfMul(denominator, 1 ^ gfMul(inv_X, Xj));
         }
 
         uint8_t errValue = gfDiv(numenator, denominator);
         codewords[errLocs[i]] ^= errValue;
     }
+
+    // Trim error correction codewords
+    codewords.resize(codewords.size() - numEcc);
     return true;
 }
 
@@ -1752,7 +1759,9 @@ void QRCodeDecoder::decodeSymbols(String& result) {
     while (!bitstream.empty()) {
         // Determine mode
         mode = static_cast<QRCodeEncoder::EncodeMode>(bitstream.next(4));
-        if (mode == QRCodeEncoder::EncodeMode::MODE_NUMERIC)
+        if (mode == 0 || bitstream.empty())
+            return;
+        else if (mode == QRCodeEncoder::EncodeMode::MODE_NUMERIC)
             decodeNumeric(result);
         else if (mode == QRCodeEncoder::EncodeMode::MODE_ALPHANUMERIC)
             decodeAlpha(result);
@@ -1762,8 +1771,6 @@ void QRCodeDecoder::decodeSymbols(String& result) {
             decodeECI(result);
         else if (mode == QRCodeEncoder::EncodeMode::MODE_KANJI)
             decodeKanji(result);
-        else if (mode == 0)  // terminator bits
-            return;
         else
             CV_Error(Error::StsNotImplemented, format("mode %d", mode));
     }
@@ -1773,12 +1780,16 @@ void QRCodeDecoder::decodeNumeric(String& result) {
     int numDigits = bitstream.next(version <= 9 ? 10 : (version <= 26 ? 12 : 14));
     for (int i = 0; i < numDigits / 3; ++i) {
         int triple = bitstream.next(10);
-        result += std::to_string(triple);
+        result += '0' + triple / 100;
+        result += '0' + (triple / 10) % 10;
+        result += '0' + triple % 10;
     }
     int remainingDigits = numDigits % 3;
     if (remainingDigits) {
         int triple = bitstream.next(remainingDigits == 1 ? 4 : 7);
-        result += std::to_string(triple);
+        if (remainingDigits == 2)
+            result += '0' + (triple / 10) % 10;
+        result += '0' + triple % 10;
     }
 }
 
@@ -1809,10 +1820,16 @@ void QRCodeDecoder::decodeByte(String& result) {
 }
 
 void QRCodeDecoder::decodeECI(String& result) {
-    int eci_assignment_number = bitstream.next(8);
-    CV_UNUSED(eci_assignment_number);
+    int eciAssignValue = bitstream.next(8);
+    for (int i = 0; i < 8; ++i) {
+        if (eciAssignValue & 1 << (7 - i))
+            eciAssignValue |= bitstream.next(8) << (i + 1) * 8;
+        else
+            break;
+    }
+    // TODO: do something with eciAssignValue
     decodeSymbols(result);
-    // TODO: there should be multiple sets
+
 }
 
 void QRCodeDecoder::decodeKanji(String& result) {
