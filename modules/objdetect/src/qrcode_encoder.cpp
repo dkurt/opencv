@@ -1444,15 +1444,17 @@ bool QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
         return errorCorrectionBlock(codewords);
     }
 
+    size_t numData = 0;
     std::vector<int> blockSizes;
     blockSizes.reserve(numBlocks);
     for (int i = 0; i < version_info_database[version].ecc[level].num_blocks_in_G1; ++i) {
         blockSizes.push_back(version_info_database[version].ecc[level].data_codewords_in_G1);
+        numData += blockSizes.back();
     }
     for (int i = 0; i < version_info_database[version].ecc[level].num_blocks_in_G2; ++i) {
         blockSizes.push_back(version_info_database[version].ecc[level].data_codewords_in_G2);
+        numData += blockSizes.back();
     }
-
 
     // TODO: parallel_for
     std::vector<std::vector<uint8_t>> blocks(numBlocks);
@@ -1477,14 +1479,22 @@ bool QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
         }
     }
 
-    std::vector<uint8_t> finalCodewords;
-    for (int i = 0; i < numBlocks; ++i) {
-        bool corrected = errorCorrectionBlock(blocks[i]);
-        if (!corrected)
-            return false;
-        finalCodewords.insert(finalCodewords.end(), blocks[i].begin(), blocks[i].begin() + blockSizes[i]);
-    }
-    codewords = finalCodewords;
+    bool corrected = true;
+    parallel_for_(Range(0, numBlocks), [&](const Range& r) {
+        for(int i = r.start; i < r.end; ++i) {
+            corrected &= errorCorrectionBlock(blocks[i]);
+            size_t start = 0;
+            for (int j = 0; j < i; ++j) {
+                start += blockSizes[j];
+            }
+            std::copy(blocks[i].begin(), blocks[i].end(), codewords.begin() + start);
+        }
+    });
+    if (!corrected)
+        return false;
+
+    // Trim unrelated codewords
+    codewords.resize(numData);
     return true;
 }
 
