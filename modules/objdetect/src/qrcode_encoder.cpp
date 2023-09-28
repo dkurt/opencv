@@ -1312,7 +1312,7 @@ private:
     } bitstream;
 
     bool decodeFormatInfo(const Mat& straight, int& mask);
-    bool correctFormatInfo(int& format_info);
+    bool correctFormatInfo(uint16_t& format_info);
     void extractCodewords(Mat& source, std::vector<uint8_t>& codewords);
     bool errorCorrection(std::vector<uint8_t>& codewords);
     bool errorCorrectionBlock(std::vector<uint8_t>& codewords);
@@ -1326,8 +1326,8 @@ private:
 
 bool decode(const Mat& _straight, String& decoded_info) {
     QRCodeDecoder decoder;
-    if (!decoder.run(_straight, decoded_info)) {
-        Mat straight = _straight.clone();
+    Mat straight = ~_straight;  // Invert modules
+    if (!decoder.run(straight, decoded_info)) {
         cv::transpose(straight, straight);
         return decoder.run(straight, decoded_info);
     }
@@ -1335,7 +1335,7 @@ bool decode(const Mat& _straight, String& decoded_info) {
 }
 
 // Unmask format info bits and apply error correction
-bool QRCodeDecoder::correctFormatInfo(int& format_info) {
+bool QRCodeDecoder::correctFormatInfo(uint16_t& format_info) {
     // There are only 32 combinations of format info sequences.
     // So lookup table is a simplest way to correct errors.
     // TODO: encoder can reuse this format info LUT
@@ -1343,14 +1343,14 @@ bool QRCodeDecoder::correctFormatInfo(int& format_info) {
                                      0x77c4, 0x72f3, 0x7daa, 0x789d, 0x662f, 0x6318, 0x6c41, 0x6976,
                                      0x1689, 0x13be, 0x1ce7, 0x19d0, 0x0762, 0x0255, 0x0d0c, 0x083b,
                                      0x355f, 0x3068, 0x3f31, 0x3a06, 0x24b4, 0x2183, 0x2eda, 0x2bed};
-    static int mask_pattern = 0b101010000010010;
+    static uint16_t mask_pattern = 0b101010000010010;
 
     for (int i = 0; i < 32; ++i) {
         // Compute Hamming distance
-        int ref = lut[i] ^ format_info;
+        uint16_t diff = lut[i] ^ format_info;
         int distance = 0;
         for (int j = 0; j < MAX_FORMAT_LENGTH; ++j) {
-            distance += (ref >> j) & 1;
+            distance += (diff >> j) & 1;
         }
         // Up to 3 bit errors might be corrected.
         // So if distance is less or equal than 3 - we found a correct format info.
@@ -1363,9 +1363,8 @@ bool QRCodeDecoder::correctFormatInfo(int& format_info) {
 }
 
 bool QRCodeDecoder::decodeFormatInfo(const Mat& straight, int& mask) {
-
     // Read left-top format info
-    int format_info = 0;
+    uint16_t format_info = 0;
     for (int i = 0; i < 6; ++i)
         format_info |= (straight.at<uint8_t>(i, 8) & 1) << i;
 
@@ -1376,17 +1375,15 @@ bool QRCodeDecoder::decodeFormatInfo(const Mat& straight, int& mask) {
     for (int i = 9; i < 15; ++i)
         format_info |= (straight.at<uint8_t>(8, 14 - i) & 1) << i;
 
-    format_info = ~format_info;
     bool correct = correctFormatInfo(format_info);
 
     // Format information 15bit sequence appears twice.
     // Try extract format info from different position.
-    int format_info_dup = 0;
+    uint16_t format_info_dup = 0;
     for (int i = 0; i < 8; ++i)
         format_info_dup |= (straight.at<uint8_t>(8, straight.cols - 1 - i) & 1) << i;
     for (int i = 0; i < 7; ++i)
         format_info_dup |= (straight.at<uint8_t>(straight.rows - 7 + i, 8) & 1) << (i + 8);
-    format_info_dup = ~format_info_dup;
 
     if (correctFormatInfo(format_info_dup)) {
         // Both strings must be the same
@@ -1570,14 +1567,6 @@ bool QRCodeDecoder::errorCorrectionBlock(std::vector<uint8_t>& codewords) {
         }
     }
 
-    // Sanity check for error locator poly
-    // for (int i = 0; i < numPoses; ++i) {
-    //     uint8_t val = syndromes[numPoses + i];
-    //     for (int j = 0; j < numPoses; ++j)
-    //         val ^= gfMul(syndromes[i + j], C[numPoses - j]);
-    //     CV_CheckEQ(val, 0, "Locator poly check failed");
-    // }
-
     // There is an error at i-th position if i is a root of locator poly
     std::vector<uint8_t> errLocs;
     errLocs.reserve(L);
@@ -1605,7 +1594,7 @@ bool QRCodeDecoder::errorCorrectionBlock(std::vector<uint8_t>& codewords) {
         uint8_t X = gfPow(2, codewords.size() - 1 - errLocs[i]);
         uint8_t inv_X = gfDiv(1, X);
 
-        for (int j = 0; j < L; ++j) {
+        for (size_t j = 0; j < L; ++j) {
             numenator = gfMul(numenator, inv_X) ^ errEval[L - 1 - j];
         }
 
@@ -1740,20 +1729,15 @@ void QRCodeDecoder::extractCodewords(Mat& source, std::vector<uint8_t>& codeword
     CV_CheckEQ((int)bits.size(), remainingBits + 8 * version_info.total_codewords,
             "QR code decoding bitstream");
 
-    // invert 0 -> 1 and 255 -> 0
-    for (size_t i = 0; i < bits.size(); ++i) {
-        bits[i] = !bits[i];
-    }
-
     // Combine bits to codewords
     size_t numCodewords = version_info.total_codewords;
     codewords.resize(numCodewords, 0);
 
     size_t offset = 0;
     for (size_t i = 0; i < numCodewords; ++i) {
-        codewords[i] = bits[offset + 7];
+        codewords[i] = bits[offset + 7] & 1;
         for (size_t j = 7; j >= 1; --j) {
-            codewords[i] |= bits[offset] << j;
+            codewords[i] |= (bits[offset] & 1) << j;
             offset += 1;
         }
         offset += 1;
