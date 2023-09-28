@@ -1507,7 +1507,9 @@ bool QRCodeDecoder::errorCorrectionBlock(std::vector<uint8_t>& codewords) {
         numSyndromes -= 2;
     else if (version == 1) {
         if (level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_L)
-            numSyndromes -= 3;
+            // According to ISO, number of syndromes for 1-L QR code should be 26-19-3=4.
+            // However, test Objdetect_QRCode_Multi.regression/13 passed only with 6 syndromes.
+            numSyndromes -= 1;
         else if (level == QRCodeEncoder::CorrectionLevel::CORRECT_LEVEL_M)
             numSyndromes -= 2;
         else
@@ -1535,8 +1537,6 @@ bool QRCodeDecoder::errorCorrectionBlock(std::vector<uint8_t>& codewords) {
     size_t L = 0;   // number of assumed errors
     size_t m = 1;   // shift value (between C and B)
     uint8_t b = 1;  // discrepancy from last L update
-
-    int numPoses = numSyndromes / 2;
 
     std::vector<uint8_t> C(numSyndromes, 0);  // Error locator polynomial
     std::vector<uint8_t> B(numSyndromes, 0);  // A copy of error locator from previos L update
@@ -1605,8 +1605,8 @@ bool QRCodeDecoder::errorCorrectionBlock(std::vector<uint8_t>& codewords) {
         uint8_t X = gfPow(2, codewords.size() - 1 - errLocs[i]);
         uint8_t inv_X = gfDiv(1, X);
 
-        for (int j = 0; j < numPoses; ++j) {
-            numenator = gfMul(numenator, inv_X) ^ errEval[numPoses - 1 - j];
+        for (int j = 0; j < L; ++j) {
+            numenator = gfMul(numenator, inv_X) ^ errEval[L - 1 - j];
         }
 
         // Compute demoninator as a product of (1-X_i * X_k) for i != k
