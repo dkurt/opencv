@@ -6,7 +6,6 @@
 
 #include "precomp.hpp"
 #include "qrcode_encoder_table.inl.hpp"
-#include <iostream>
 
 namespace cv
 {
@@ -1434,7 +1433,6 @@ bool QRCodeDecoder::errorCorrection(std::vector<uint8_t>& codewords) {
     CV_CheckEQ((int)codewords.size(), version_info_database[version].total_codewords,
                "Number of codewords");
 
-    // TODO: starting from version 23 there are 3 blocks
     int numBlocks = version_info_database[version].ecc[level].num_blocks_in_G1 +
                     version_info_database[version].ecc[level].num_blocks_in_G2;
     if (numBlocks == 1) {
@@ -1640,107 +1638,55 @@ void QRCodeDecoder::extractCodewords(Mat& source, std::vector<uint8_t>& codeword
         }
     }
 
-    std::vector<uint8_t> bits;
-    Mat right = source.rowRange(9, source.rows).colRange(source.cols - 8, source.cols);
-    Mat middle = source.colRange(9, source.cols - 8);
-    Mat left = source.rowRange(9, source.rows - 8).colRange(0, 9);
+    // Mask detection markers
+    source.rowRange(0, 9).colRange(source.cols - 8, source.cols).setTo(INVALID_REGION_VALUE);
+    source.rowRange(0, 9).colRange(0, 9).setTo(INVALID_REGION_VALUE);
+    source.colRange(0, 9).rowRange(source.rows - 8, source.rows).setTo(INVALID_REGION_VALUE);
 
     // Mask Version Information blocks
     if (version >= 7) {
-        middle.rowRange(0, 6).colRange(middle.cols - 3, middle.cols).setTo(INVALID_REGION_VALUE);
-        left.colRange(0, 6).rowRange(left.rows - 3, left.rows).setTo(INVALID_REGION_VALUE);
+        source.rowRange(0, 6).colRange(source.cols - 12, source.cols - 9).setTo(INVALID_REGION_VALUE);
+        source.colRange(0, 6).rowRange(source.rows - 12, source.rows - 9).setTo(INVALID_REGION_VALUE);
     }
 
-    int moveUpwards = true;
-    for (int i = right.cols / 2 - 1; i >= 0; --i) {
-        Mat col0 = right.col(i * 2);
-        Mat col1 = right.col(i * 2 + 1);
-        for (int j = 0; j < right.rows; ++j) {
-            if (moveUpwards) {
-                if (col1.at<uint8_t>(right.rows - 1 - j) != INVALID_REGION_VALUE)
-                    bits.push_back(col1.at<uint8_t>(right.rows - 1 - j));
-                if (col0.at<uint8_t>(right.rows - 1 - j) != INVALID_REGION_VALUE)
-                    bits.push_back(col0.at<uint8_t>(right.rows - 1 - j));
-            } else {
-                if (col1.at<uint8_t>(j) != INVALID_REGION_VALUE)
+    // Mask timing pattern
+    source.row(6) = INVALID_REGION_VALUE;
+
+    std::vector<uint8_t> bits;
+    bits.reserve(source.total() - source.cols);
+    bool moveUpwards = true;
+    for (auto& data : {source.colRange(7, source.cols), source.colRange(0, 6)}) {
+        for (int i = data.cols / 2 - 1; i >= 0; --i) {
+            Mat col0 = data.col(i * 2);
+            Mat col1 = data.col(i * 2 + 1);
+            for (int j = 0; j < data.rows; ++j) {
+                if (moveUpwards) {
+                    bits.push_back(col1.at<uint8_t>(data.rows - 1 - j));
+                    bits.push_back(col0.at<uint8_t>(data.rows - 1 - j));
+                } else {
                     bits.push_back(col1.at<uint8_t>(j));
-                if (col0.at<uint8_t>(j) != INVALID_REGION_VALUE)
                     bits.push_back(col0.at<uint8_t>(j));
+                }
             }
+            moveUpwards = !moveUpwards;
         }
-        moveUpwards = !moveUpwards;
     }
-
-    moveUpwards = true;
-    for (int i = middle.cols / 2 - 1; i >= 0; --i) {
-        Mat col0 = middle.col(i * 2);
-        Mat col1 = middle.col(i * 2 + 1);
-        for (int j = 0; j < middle.rows; ++j) {
-            if (moveUpwards) {
-                if (middle.rows - 1 - j == 6)
-                    continue;
-
-                if (col1.at<uint8_t>(middle.rows - 1 - j) != INVALID_REGION_VALUE)
-                    bits.push_back(col1.at<uint8_t>(middle.rows - 1 - j));
-                if (col0.at<uint8_t>(middle.rows - 1 - j) != INVALID_REGION_VALUE)
-                    bits.push_back(col0.at<uint8_t>(middle.rows - 1 - j));
-            } else {
-                if (j == 6)
-                    continue;
-                if (col1.at<uint8_t>(j) != INVALID_REGION_VALUE)
-                    bits.push_back(col1.at<uint8_t>(j));
-                if (col0.at<uint8_t>(j) != INVALID_REGION_VALUE)
-                    bits.push_back(col0.at<uint8_t>(j));
-            }
-        }
-        moveUpwards = !moveUpwards;
-    }
-
-    moveUpwards = true;
-    for (int i = left.cols - 1; i >= 0; i -= 2) {
-        if (i == 6) {
-            i -= 1;
-        }
-        Mat col0 = left.col(i - 1);
-        Mat col1 = left.col(i);
-        for (int j = 0; j < left.rows; ++j) {
-            if (moveUpwards) {
-                if (col1.at<uint8_t>(left.rows - 1 - j) != INVALID_REGION_VALUE)
-                    bits.push_back(col1.at<uint8_t>(left.rows - 1 - j));
-                if (col0.at<uint8_t>(left.rows - 1 - j) != INVALID_REGION_VALUE)
-                    bits.push_back(col0.at<uint8_t>(left.rows - 1 - j));
-            } else {
-                if (col1.at<uint8_t>(j) != INVALID_REGION_VALUE)
-                    bits.push_back(col1.at<uint8_t>(j));
-                if (col0.at<uint8_t>(j) != INVALID_REGION_VALUE)
-                    bits.push_back(col0.at<uint8_t>(j));
-            }
-        }
-        moveUpwards = !moveUpwards;
-    }
-
-    int remainingBits = 0;
-    if (version >= 2 && version <= 6)
-        remainingBits = 7;
-    else if ((version >= 14 && version <= 20) || (version >= 28 && version <= 34))
-        remainingBits = 3;
-    else if (version >= 21 && version <= 27)
-        remainingBits = 4;
-    CV_CheckEQ((int)bits.size(), remainingBits + 8 * version_info.total_codewords,
-            "QR code decoding bitstream");
 
     // Combine bits to codewords
     size_t numCodewords = version_info.total_codewords;
-    codewords.resize(numCodewords, 0);
+    codewords.resize(numCodewords);
 
     size_t offset = 0;
     for (size_t i = 0; i < numCodewords; ++i) {
-        codewords[i] = bits[offset + 7] & 1;
-        for (size_t j = 7; j >= 1; --j) {
-            codewords[i] |= (bits[offset] & 1) << j;
+        codewords[i] = 0;
+        for (size_t j = 0; j < 8; ++j) {
+            while (bits[offset] == INVALID_REGION_VALUE) {
+                offset += 1;
+                CV_Assert(offset < bits.size());
+            }
+            codewords[i] |= (bits[offset] & 1) << (7 - j);
             offset += 1;
         }
-        offset += 1;
     }
 }
 
