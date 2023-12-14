@@ -297,7 +297,9 @@ It also demonstrates how to save multiple images in a TIFF file:
 CV_EXPORTS_W bool imwrite( const String& filename, InputArray img,
               const std::vector<int>& params = std::vector<int>());
 
-/// @overload multi-image overload for bindings
+/** @overload imwrite
+Multi-image overload for bindings
+**/
 CV_WRAP static inline
 bool imwritemulti(const String& filename, InputArrayOfArrays img,
                   const std::vector<int>& params = std::vector<int>())

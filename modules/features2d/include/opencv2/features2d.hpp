@@ -1603,8 +1603,6 @@ protected:
 
 //! @} features2d_category
 
-//! @} features2d
-
 } /* namespace cv */
 
 #endif
