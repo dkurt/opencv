@@ -390,7 +390,7 @@ public:
     virtual bool isOpened() const CV_OVERRIDE { return (bool)pipeline; }
     virtual int getCaptureDomain() CV_OVERRIDE { return cv::CAP_GSTREAMER; }
     bool open(int id, const cv::VideoCaptureParameters& params);
-    bool open(const String &filename_, const cv::VideoCaptureParameters& params);
+    bool open(const String &filename_, const uint8_t* buffer, size_t buffer_size, const cv::VideoCaptureParameters& params);
     static void newPad(GstElement * /*elem*/, GstPad     *pad, gpointer    data);
     bool configureHW(const cv::VideoCaptureParameters&);
     bool configureStreamsProperty(const cv::VideoCaptureParameters&);
@@ -1360,10 +1360,10 @@ bool GStreamerCapture::open(int id, const cv::VideoCaptureParameters& params)
     desc << "v4l2src device=/dev/video" << id
              << " ! " << COLOR_ELEM
              << " ! appsink drop=true";
-    return open(desc.str(), params);
+    return open(desc.str(), nullptr, 0, params);
 }
 
-bool GStreamerCapture::open(const String &filename_, const cv::VideoCaptureParameters& params)
+bool GStreamerCapture::open(const String &filename_, const uint8_t* buffer, size_t buffer_size, const cv::VideoCaptureParameters& params)
 {
     gst_initializer::init();
 
@@ -1396,6 +1396,7 @@ bool GStreamerCapture::open(const String &filename_, const cv::VideoCaptureParam
     bool file = false;
     bool manualpipeline = false;
     GSafePtr<char> uri;
+    GSafePtr<GstElement> appsrc;
     GSafePtr<GstBus> bus;
 
     GSafePtr<GstElement> queue;
@@ -1413,8 +1414,10 @@ bool GStreamerCapture::open(const String &filename_, const cv::VideoCaptureParam
     CV_LOG_INFO(NULL, "OpenCV | GStreamer: " << filename);
     if (!gst_uri_is_valid(filename))
     {
+        printf("not valid\n");
         if (utils::fs::exists(filename_))
         {
+            printf("exists\n");
             GSafePtr<GError> err;
             uri.attach(gst_filename_to_uri(filename, err.getRef()));
             if (uri)
@@ -1426,6 +1429,27 @@ bool GStreamerCapture::open(const String &filename_, const cv::VideoCaptureParam
                 CV_WARN("Error opening file: " << filename << " (" << (err ? err->message : "<unknown reason>") << ")");
                 return false;
             }
+        }
+        else if (buffer)
+        {
+            printf("buffer\n");
+            //gst_app_src_push_buffer takes ownership of the buffer, so we need to supply it a copy
+            GstBuffer *buf = gst_buffer_new_allocate(NULL, buffer_size, NULL);
+            GstMapInfo info;
+            gst_buffer_map(buf, &info, (GstMapFlags)GST_MAP_READ);
+            memcpy(info.data, buffer, buffer_size);
+            gst_buffer_unmap(buf, &info);
+
+            appsrc.reset(gst_element_factory_make("appsrc", "input_buffer_ocv"));
+            bool ret = gst_app_src_push_buffer(GST_APP_SRC(appsrc.get()), buf);
+            if (ret != GST_FLOW_OK)
+            {
+                CV_WARN("Error pushing buffer to GStreamer pipeline");
+                return false;
+            }
+
+            uridecodebin.reset(gst_element_factory_make("decodebin", NULL));
+            CV_Assert(uridecodebin);
         }
         else
         {
@@ -1443,12 +1467,14 @@ bool GStreamerCapture::open(const String &filename_, const cv::VideoCaptureParam
     {
         uri.attach(g_strdup(filename));
     }
-    CV_LOG_INFO(NULL, "OpenCV | GStreamer: mode - " << (file ? "FILE" : manualpipeline ? "MANUAL" : "URI"));
+    CV_LOG_INFO(NULL, "OpenCV | GStreamer: mode - " << (file ? "FILE" : manualpipeline ? "MANUAL" : buffer ? "BUFFER" : "URI"));
     bool element_from_uri = false;
+    printf("1\n");
     if (!uridecodebin)
     {
         if (videoStream >= 0)
         {
+    printf("2\n");
             // At this writing, the v4l2 element (and maybe others too) does not support caps renegotiation.
             // This means that we cannot use an uridecodebin when dealing with v4l2, since setting
             // capture properties will not work.
@@ -1481,6 +1507,7 @@ bool GStreamerCapture::open(const String &filename_, const cv::VideoCaptureParam
             g_object_set(G_OBJECT(uridecodebin.get()), "uri", uri.get(), NULL);
         }
     }
+    printf("2\n");
 
     if (manualpipeline)
     {
@@ -1540,11 +1567,14 @@ bool GStreamerCapture::open(const String &filename_, const cv::VideoCaptureParam
     }
     else
     {
+    printf("3\n");
+
         pipeline.reset(gst_pipeline_new(NULL));
         CV_Assert(pipeline);
 
         if (videoStream >= 0)
         {
+            printf("a\n");
             queue.reset(gst_element_factory_make("queue", NULL));
             CV_Assert(queue);
             sink.reset(gst_element_factory_make("appsink", NULL));
@@ -1553,14 +1583,24 @@ bool GStreamerCapture::open(const String &filename_, const cv::VideoCaptureParam
             //automatically selects the correct colorspace conversion based on caps.
             color.reset(gst_element_factory_make(COLOR_ELEM, NULL));
             CV_Assert(color);
+            printf("b\n");
 
-            gst_bin_add_many(GST_BIN(pipeline.get()), queue.get(), uridecodebin.get(), color.get(), sink.get(), NULL);
+            gst_bin_add_many(GST_BIN(pipeline.get()), queue.get(), appsrc.get(), uridecodebin.get(), color.get(), sink.get(), NULL);
+            printf("link\n");
+            if(!gst_element_link(appsrc.get(), uridecodebin.get()))
+            {
+                printf("aaa\n");
+                CV_WARN("GStreamer(video): cannot link appsrc -> decodebin");
+                pipeline.release();
+                return false;
+            }
+            // g_object_set(uridecodebin.get(), "src_0", appsrc.get(), NULL);
 
             if (element_from_uri)
             {
                 if(!gst_element_link(uridecodebin, color.get()))
                 {
-                    CV_WARN("GStreamer(video): cannot link color -> sink");
+                    CV_WARN("GStreamer(video): cannot link uridecodebin -> color");
                     pipeline.release();
                     return false;
                 }
@@ -1569,6 +1609,7 @@ bool GStreamerCapture::open(const String &filename_, const cv::VideoCaptureParam
             {
                 g_signal_connect(uridecodebin, "pad-added", G_CALLBACK(newPad), color.get());
             }
+            printf("c\n");
 
             if (!gst_element_link(color.get(), sink.get()))
             {
@@ -1576,6 +1617,7 @@ bool GStreamerCapture::open(const String &filename_, const cv::VideoCaptureParam
                 pipeline.release();
                 return false;
             }
+            printf("d\n");
         }
         if (audioStream >= 0)
         {
@@ -2163,7 +2205,15 @@ bool GStreamerCapture::setProperty(int propId, double value)
 Ptr<IVideoCapture> createGStreamerCapture_file(const String& filename, const cv::VideoCaptureParameters& params)
 {
     Ptr<GStreamerCapture> cap = makePtr<GStreamerCapture>();
-    if (cap && cap->open(filename, params))
+    if (cap && cap->open(filename, nullptr, 0, params))
+        return cap;
+    return Ptr<IVideoCapture>();
+}
+
+Ptr<IVideoCapture> createGStreamerCapture_buffer(const std::vector<uchar>& buffer, const cv::VideoCaptureParameters& params)
+{
+    Ptr<GStreamerCapture> cap = makePtr<GStreamerCapture>();
+    if (cap && cap->open(std::string(), buffer.data(), buffer.size(), params))
         return cap;
     return Ptr<IVideoCapture>();
 }

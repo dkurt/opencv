@@ -67,9 +67,9 @@ static const struct VideoBackendInfo builtin_backends[] =
 #endif
 
 #ifdef HAVE_GSTREAMER
-    DECLARE_STATIC_BACKEND(CAP_GSTREAMER, "GSTREAMER", MODE_CAPTURE_ALL | MODE_WRITER, createGStreamerCapture_file, createGStreamerCapture_cam, 0, create_GStreamer_writer)
+    DECLARE_STATIC_BACKEND(CAP_GSTREAMER, "GSTREAMER", MODE_CAPTURE_ALL | MODE_CAPTURE_BY_BUFFER | MODE_WRITER, createGStreamerCapture_file, createGStreamerCapture_cam, createGStreamerCapture_buffer, create_GStreamer_writer)
 #elif defined(ENABLE_PLUGINS)
-    DECLARE_DYNAMIC_BACKEND(CAP_GSTREAMER, "GSTREAMER", MODE_CAPTURE_ALL | MODE_WRITER)
+    DECLARE_DYNAMIC_BACKEND(CAP_GSTREAMER, "GSTREAMER", MODE_CAPTURE_ALL | MODE_CAPTURE_BY_BUFFER | MODE_WRITER)
 #endif
 
 #ifdef HAVE_MFX // Media SDK
