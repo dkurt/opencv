@@ -1432,22 +1432,7 @@ bool GStreamerCapture::open(const String &filename_, const uint8_t* buffer, size
         }
         else if (buffer)
         {
-            printf("buffer\n");
-            //gst_app_src_push_buffer takes ownership of the buffer, so we need to supply it a copy
-            GstBuffer *buf = gst_buffer_new_allocate(NULL, buffer_size, NULL);
-            GstMapInfo info;
-            gst_buffer_map(buf, &info, (GstMapFlags)GST_MAP_READ);
-            memcpy(info.data, buffer, buffer_size);
-            gst_buffer_unmap(buf, &info);
-
             appsrc.reset(gst_element_factory_make("appsrc", "input_buffer_ocv"));
-            bool ret = gst_app_src_push_buffer(GST_APP_SRC(appsrc.get()), buf);
-            if (ret != GST_FLOW_OK)
-            {
-                CV_WARN("Error pushing buffer to GStreamer pipeline");
-                return false;
-            }
-
             uridecodebin.reset(gst_element_factory_make("decodebin", NULL));
             CV_Assert(uridecodebin);
         }
@@ -1587,6 +1572,7 @@ bool GStreamerCapture::open(const String &filename_, const uint8_t* buffer, size
 
             gst_bin_add_many(GST_BIN(pipeline.get()), queue.get(), appsrc.get(), uridecodebin.get(), color.get(), sink.get(), NULL);
             printf("link\n");
+
             if(!gst_element_link(appsrc.get(), uridecodebin.get()))
             {
                 printf("aaa\n");
@@ -1594,9 +1580,24 @@ bool GStreamerCapture::open(const String &filename_, const uint8_t* buffer, size
                 pipeline.release();
                 return false;
             }
-            // g_object_set(uridecodebin.get(), "src_0", appsrc.get(), NULL);
 
-            if (element_from_uri)
+            printf("buffer\n");
+            //gst_app_src_push_buffer takes ownership of the buffer, so we need to supply it a copy
+            GstBuffer *buf = gst_buffer_new_allocate(NULL, buffer_size, NULL);
+            GstMapInfo info;
+            gst_buffer_map(buf, &info, (GstMapFlags)GST_MAP_READ);
+            memcpy(info.data, buffer, buffer_size);
+            gst_buffer_unmap(buf, &info);
+            bool ret = gst_app_src_push_buffer(GST_APP_SRC(appsrc.get()), buf);
+            if (ret != GST_FLOW_OK)
+            {
+                CV_WARN("Error pushing buffer to GStreamer pipeline");
+                return false;
+            }
+            gst_app_src_end_of_stream(GST_APP_SRC(appsrc.get()));
+
+
+            if (element_from_uri || buffer)
             {
                 if(!gst_element_link(uridecodebin, color.get()))
                 {
