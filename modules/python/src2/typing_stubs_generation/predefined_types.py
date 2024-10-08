@@ -232,8 +232,7 @@ _PREDEFINED_TYPES = (
                         SequenceTypeNode("map_string_and_vector_float::value", PrimitiveTypeNode.float_())),
     AliasTypeNode.dict_("map_int_and_double", PrimitiveTypeNode.int_("map_int_and_double::key"),
                         PrimitiveTypeNode.float_("map_int_and_double::value")),
-    AliasTypeNode.class_("std::istream", "io.IOBase",
-                         doc="Base input text/binary stream"),
+    AliasTypeNode.ref_("istream", "io.BufferedIOBase"),
 )
 
 PREDEFINED_TYPES = dict(
