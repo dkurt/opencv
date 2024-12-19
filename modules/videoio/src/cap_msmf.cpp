@@ -1252,6 +1252,149 @@ bool CvCapture_MSMF::open(int index, const cv::VideoCaptureParameters* params)
     return isOpen;
 }
 
+// class StreamImpl : public IStream
+// {
+// public:
+//     StreamImpl(std::streambuf& buffer_) : buffer(buffer_) {}
+
+//     STDMETHODIMP QueryInterface(REFIID iid, void** ppv) CV_OVERRIDE
+//     {
+// #ifdef _MSC_VER
+// #pragma warning(push)
+// #pragma warning(disable:4838)
+// #endif
+//         static const QITAB qit[] =
+//         {
+//             QITABENT(StreamImpl, IStream),
+//             { 0 },
+//         };
+// #ifdef _MSC_VER
+// #pragma warning(pop)
+// #endif
+//         return QISearch(this, qit, iid, ppv);
+//     }
+
+//     HRESULT IStream::Seek(LARGE_INTEGER offset, DWORD dir, ULARGE_INTEGER* pos)
+//     {
+//         pos = new ULARGE_INTEGER();
+//         pos->QuadPart = buffer.pubseekoff(offset.QuadPart, dir == STREAM_SEEK_SET ? std::ios_base::beg : (dir == STREAM_SEEK_END ? std::ios_base::beg : std::ios_base::cur));
+//         std::cout << "Seek b " << offset.QuadPart << " " << dir << " " << pos->QuadPart << std::endl;
+//         return S_OK;
+//     }
+
+//     HRESULT IStream::Stat(STATSTG *stats,DWORD)
+//     {
+//         printf("Stat\n");
+//         stats->cbSize.QuadPart = 315058;
+//         // std::cout << stats << std::endl;
+//         return E_NOTIMPL;
+//     }
+
+
+//     ULONG IUnknown::AddRef(void) { printf("AddRef\n"); return 0; }
+//     ULONG IUnknown::Release(void) { printf("Release\n"); return 0; }
+//     HRESULT ISequentialStream::Read(void *,ULONG,ULONG *) { printf("Read\n"); return S_OK; }
+//     HRESULT ISequentialStream::Write(const void *,ULONG,ULONG *) { printf("Write\n"); return S_OK; }
+//     HRESULT IStream::SetSize(ULARGE_INTEGER) { printf("SetSize\n"); return S_OK; }
+//     HRESULT IStream::CopyTo(IStream *,ULARGE_INTEGER,ULARGE_INTEGER *,ULARGE_INTEGER *) { printf("CopyTo\n"); return S_OK; }
+//     HRESULT IStream::Commit(DWORD) { printf("Commit\n"); return S_OK; }
+//     HRESULT IStream::Revert(void) { printf("Revert\n"); return S_OK; }
+//     HRESULT IStream::LockRegion(ULARGE_INTEGER,ULARGE_INTEGER,DWORD) { printf("LockRegion\n"); return S_OK; }
+//     HRESULT IStream::UnlockRegion(ULARGE_INTEGER,ULARGE_INTEGER,DWORD) { printf("UnlockRegion\n"); return S_OK; }
+//     HRESULT IStream::Clone(IStream **) { printf("Clone\n"); return S_OK; }
+
+// private:
+//     std::streambuf& buffer;
+// };
+
+class ByteStreamImpl : public IMFByteStream
+{
+public:
+    ByteStreamImpl(std::streambuf& buffer_) : buffer(buffer_) {}
+
+    STDMETHODIMP QueryInterface(REFIID iid, void** ppv) CV_OVERRIDE
+    {
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable:4838)
+#endif
+        static const QITAB qit[] =
+        {
+            QITABENT(ByteStreamImpl, IMFByteStream),
+            { 0 },
+        };
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+        return QISearch(this, qit, iid, ppv);
+    }
+
+    HRESULT GetCapabilities(DWORD *pdwCapabilities)
+    {
+        *pdwCapabilities = MFBYTESTREAM_IS_READABLE | MFBYTESTREAM_IS_SEEKABLE;
+        return S_OK;
+    }
+
+    HRESULT GetCurrentPosition(QWORD *pqwPosition)
+    {
+        *pqwPosition = buffer.pubseekoff(0, std::ios_base::cur);
+        std::cout << "GetCurrentPosition " <<*pqwPosition << std::endl;
+        return S_OK;
+    }
+
+    HRESULT GetLength(QWORD *len)
+    {
+        *len = -1;
+        return S_OK;
+    }
+
+    HRESULT SetCurrentPosition(QWORD pos)
+    {
+        std::cout << "setpos " << pos << std::endl;
+        buffer.pubseekoff(pos, std::ios_base::beg);
+        return S_OK;
+    }
+
+    HRESULT BeginRead(BYTE *pb, ULONG cb, IMFAsyncCallback *pCallback, IUnknown *state)
+    {
+        return E_NOTIMPL;
+    }
+
+    HRESULT Read(BYTE *pb, ULONG cb, ULONG *read)
+    {
+        std::cout << "read " << cb << std::endl;
+        *read = buffer.sgetn(reinterpret_cast<char*>(pb), cb);
+        return S_OK;
+    }
+
+    HRESULT Seek(MFBYTESTREAM_SEEK_ORIGIN dir, LONGLONG offset, DWORD flags, QWORD *pos)
+    {
+        std::cout << "seek " << dir << " " << " " << MFBYTESTREAM_SEEK_ORIGIN::msoBegin << " " << offset << " " << flags << std::endl;
+        *pos = buffer.pubseekoff(offset, dir == MFBYTESTREAM_SEEK_ORIGIN::msoBegin ? std::ios_base::beg : std::ios_base::cur);
+        return S_OK;
+    }
+
+    HRESULT IsEndOfStream(BOOL *res)
+    {
+        *res = buffer.sgetc() == EOF;
+        std::cout << "IsEndOfStream " << *res << std::endl;
+        return S_OK;
+    }
+
+    ULONG AddRef(void) { return 0; }
+    ULONG Release(void) { return 0; }
+    HRESULT SetLength(QWORD) { printf("SetLength\n"); return S_OK; }
+    HRESULT EndRead(IMFAsyncResult *,ULONG *) { printf("EndRead\n"); return S_OK; }
+    HRESULT Write(const BYTE *,ULONG,ULONG *) { printf("Write\n"); return S_OK; }
+    HRESULT BeginWrite(const BYTE *,ULONG,IMFAsyncCallback *,IUnknown *) { printf("BeginWrite\n"); return S_OK; }
+    HRESULT EndWrite(IMFAsyncResult *,ULONG *) { printf("EndWrite\n"); return S_OK; }
+    HRESULT Flush(void) { printf("Flush\n"); return S_OK; }
+    HRESULT Close(void) { printf("Close\n"); return S_OK; }
+
+private:
+    std::streambuf& buffer;
+};
+
 bool CvCapture_MSMF::open(const cv::String& _filename, std::streambuf& buffer, const cv::VideoCaptureParameters* params)
 {
     close();
@@ -1276,17 +1419,19 @@ bool CvCapture_MSMF::open(const cv::String& _filename, std::streambuf& buffer, c
     else if (buffer.sgetc() != EOF)
     {
         // TODO: implement read by chunks
-        std::vector<char> data;
-        data.resize(buffer.pubseekoff(0, std::ios_base::end));
-        buffer.pubseekoff(0, std::ios_base::beg);
-        buffer.sgetn(data.data(), data.size());
-        IStream* s = SHCreateMemStream(reinterpret_cast<const BYTE*>(data.data()), static_cast<UINT32>(data.size()));
-        if (!s)
-            return false;
+        // std::vector<char> data;
+        // std::cout << buffer.pubseekoff(0, std::ios_base::end) << std::endl;
+        // buffer.pubseekoff(0, std::ios_base::beg);
+        // buffer.sgetn(data.data(), data.size());
+        // IStream* s = SHCreateMemStream(reinterpret_cast<const BYTE*>(data.data()), static_cast<UINT32>(data.size()));
+        // if (!s)
+        //     return false;
+        // IStream* s = new StreamImpl(buffer);
 
-        succeeded = SUCCEEDED(MFCreateMFByteStreamOnStream(s, &byteStream));
-        if (!succeeded)
-            return false;
+        // succeeded = SUCCEEDED(MFCreateMFByteStreamOnStream(s, &byteStream));
+        // if (!succeeded)
+        //     return false;
+        byteStream = new ByteStreamImpl(buffer);
         if (!SUCCEEDED(MFStartup(MF_VERSION)))
             return false;
         succeeded = SUCCEEDED(MFCreateSourceReaderFromByteStream(byteStream.Get(), attr.Get(), &videoFileSource));
