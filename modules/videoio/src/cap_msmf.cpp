@@ -2813,16 +2813,13 @@ CvResult CV_API_CALL cv_capture_open_buffer(
     if (!handle)
         return CV_ERROR_FAIL;
 
-    CvStream buffer(opaque, read, seek);
-    if (buffer.sgetc() == EOF)
-        return CV_ERROR_FAIL;
     *handle = NULL;
     CaptureT* cap = 0;
     try
     {
         cv::VideoCaptureParameters parameters(params, n_params);
         cap = new CaptureT();
-        bool res = cap->open(std::string(), buffer, &parameters);
+        bool res = cap->open(std::string(), makePtr<IReadStream>(opaque, read, seek), &parameters);
         if (res)
         {
             *handle = (CvPluginCapture)cap;

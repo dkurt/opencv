@@ -11,44 +11,44 @@
 namespace cv {
 CV_EXPORTS std::string icvExtractPattern(const std::string& filename, unsigned *offset);
 
-class CvStream : public std::streambuf
+class IReadStream
 {
 public:
-    CvStream(void* _opaque = nullptr,
-             long long(*_read)(void* opaque, char* buffer, long long size) = nullptr,
-             long long(*_seek)(void* opaque, long long offset, int way) = nullptr)
+    virtual ~IReadStream() {};
+    virtual long long read(char* buffer, long long size) = 0;
+    virtual long long seek(long long offset, int way) = 0;
+    virtual IReadStream* clone() = 0;
+};
+
+class StreambufReadStream : public IReadStream
+{
+public:
+    StreambufReadStream(std::streambuf& _stream) : stream(_stream) {}
+
+    virtual ~StreambufReadStream() {}
+
+    long long read(char* buffer, long long size) override
     {
-        opaque = _opaque;
-        read = _read;
-        seek = _seek;
+        return stream.sgetn(buffer, size);
     }
 
-    std::streamsize xsgetn(char* s, std::streamsize n) override
+    long long seek(long long offset, int way) override
     {
-        return read(opaque, s, (int)n);
+        return stream.pubseekoff(offset, way == SEEK_SET ? std::ios_base::beg : (way == SEEK_END ? std::ios_base::end : std::ios_base::cur));
     }
 
-    std::streampos seekoff(std::streamoff off, std::ios_base::seekdir way, std::ios_base::openmode = std::ios_base::in | std::ios_base::out) override
+    IReadStream* clone() override
     {
-        return seek(opaque, off, way == std::ios_base::beg ? SEEK_SET : (way == std::ios_base::end ? SEEK_END : SEEK_CUR));
+        return new StreambufReadStream(stream);
     }
 
-    // Required for sgetc (check for end-of-stream)
-    int underflow() override
+    static Ptr<IReadStream> create(std::streambuf& stream)
     {
-        char s;
-        if (xsgetn(&s, 1) == 1)
-        {
-            seekoff(-1, std::ios_base::cur);
-            return static_cast<int>(s);
-        }
-        else
-            return EOF;
+        return Ptr<IReadStream>(new StreambufReadStream(stream));
     }
+
 private:
-    void* opaque;
-    long long(*read)(void* opaque, char* buffer, long long size);
-    long long(*seek)(void* opaque, long long offset, int way);
+    std::streambuf& stream;
 };
 }
 
