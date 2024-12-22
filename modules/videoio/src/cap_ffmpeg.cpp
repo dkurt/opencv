@@ -348,7 +348,7 @@ CvResult CV_API_CALL cv_capture_open_buffer(
     try
     {
         cv::VideoCaptureParameters parameters(params, n_params);
-        cap = new CvCapture_FFMPEG_proxy(makePtr<IReadStream>(opaque, read, seek), parameters);
+        cap = new CvCapture_FFMPEG_proxy(Ptr<IReadStream>(new ReadStreamCallback(opaque, read, seek)), parameters);
         if (cap->isOpened())
         {
             *handle = (CvPluginCapture)cap;

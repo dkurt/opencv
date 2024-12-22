@@ -50,6 +50,43 @@ public:
 private:
     std::streambuf& stream;
 };
+
+
+class ReadStreamCallback : public IReadStream
+{
+public:
+    ReadStreamCallback(void* _opaque,
+                       long long (*_read)(void* opaque, char* buffer, long long size),
+                       long long (*_seek)(void* opaque, long long offset, int way))
+    {
+        opaque = _opaque;
+        readCallback = _read;
+        seekCallback = _seek;
+    }
+
+    virtual ~ReadStreamCallback() {}
+
+    long long read(char* buffer, long long size) override
+    {
+        return readCallback(opaque, buffer, size);
+    }
+
+    long long seek(long long offset, int way) override
+    {
+        return seekCallback(opaque, offset, way);
+    }
+
+    IReadStream* clone() override
+    {
+        return new ReadStreamCallback(opaque, readCallback, seekCallback);
+    }
+
+private:
+    void* opaque;
+    long long (*readCallback)(void* opaque, char* buffer, long long size);
+    long long (*seekCallback)(void* opaque, long long offset, int way);
+};
+
 }
 
 #endif // OPENCV_VIDEOIO_UTILS_PRIVATE_HPP

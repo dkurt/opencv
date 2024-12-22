@@ -746,7 +746,7 @@ public:
     virtual ~CvCapture_MSMF();
     bool configureHW(const cv::VideoCaptureParameters& params);
     virtual bool open(int, const cv::VideoCaptureParameters* params);
-    virtual bool open(const cv::String&, std::streambuf&, const cv::VideoCaptureParameters* params);
+    virtual bool open(const cv::String&, Ptr<IReadStream>, const cv::VideoCaptureParameters* params);
     virtual void close();
     virtual double getProperty(int) const CV_OVERRIDE;
     virtual bool setProperty(int, double) CV_OVERRIDE;
@@ -1252,10 +1252,10 @@ bool CvCapture_MSMF::open(int index, const cv::VideoCaptureParameters* params)
     return isOpen;
 }
 
-bool CvCapture_MSMF::open(const cv::String& _filename, std::streambuf& buffer, const cv::VideoCaptureParameters* params)
+bool CvCapture_MSMF::open(const cv::String& _filename, Ptr<IReadStream> stream, const cv::VideoCaptureParameters* params)
 {
     close();
-    if (_filename.empty() && buffer.sgetc() == EOF)
+    if (_filename.empty() && !stream)
         return false;
 
     if (params)
@@ -2415,12 +2415,12 @@ cv::Ptr<cv::IVideoCapture> cv::cvCreateCapture_MSMF (const cv::String& filename,
     return cv::Ptr<cv::IVideoCapture>();
 }
 
-cv::Ptr<cv::IVideoCapture> cv::cvCreateCapture_MSMF (std::streambuf& source, const cv::VideoCaptureParameters& params)
+cv::Ptr<cv::IVideoCapture> cv::cvCreateCapture_MSMF (Ptr<IReadStream> stream, const cv::VideoCaptureParameters& params)
 {
     cv::Ptr<CvCapture_MSMF> capture = cv::makePtr<CvCapture_MSMF>();
     if (capture)
     {
-        capture->open(std::string(), source, &params);
+        capture->open(std::string(), stream, &params);
         if (capture->isOpened())
             return capture;
     }
@@ -2819,7 +2819,7 @@ CvResult CV_API_CALL cv_capture_open_buffer(
     {
         cv::VideoCaptureParameters parameters(params, n_params);
         cap = new CaptureT();
-        bool res = cap->open(std::string(), makePtr<IReadStream>(opaque, read, seek), &parameters);
+        bool res = cap->open(std::string(), Ptr<IReadStream>(new ReadStreamCallback(opaque, read, seek)), &parameters);
         if (res)
         {
             *handle = (CvPluginCapture)cap;
