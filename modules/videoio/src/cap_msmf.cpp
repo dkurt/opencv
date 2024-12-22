@@ -1277,9 +1277,9 @@ bool CvCapture_MSMF::open(const cv::String& _filename, Ptr<IReadStream> stream, 
     {
         // TODO: implement read by chunks
         std::vector<char> data;
-        data.resize(buffer.pubseekoff(0, std::ios_base::end));
-        buffer.pubseekoff(0, std::ios_base::beg);
-        buffer.sgetn(data.data(), data.size());
+        data.resize(stream->seek(0, SEEK_END));
+        stream->seek(0, SEEK_SET);
+        stream->read(data.data(), data.size());
         IStream* s = SHCreateMemStream(reinterpret_cast<const BYTE*>(data.data()), static_cast<UINT32>(data.size()));
         if (!s)
             return false;

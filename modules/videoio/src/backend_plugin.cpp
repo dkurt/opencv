@@ -448,6 +448,7 @@ class PluginCapture : public cv::IVideoCapture
 {
     const OpenCV_VideoIO_Capture_Plugin_API* plugin_api_;
     CvPluginCapture capture_;
+    IReadStream* readStream_;
 
 public:
     static
@@ -467,16 +468,16 @@ public:
             if (CV_ERROR_OK == plugin_api->v2.Capture_open_buffer(
                 stream.get(),
                 [](void* opaque, char* buffer, long long size) -> long long {
-                    auto is = reinterpret_cast<std::streambuf*>(opaque);
-                    return is->sgetn(buffer, size);
+                    auto is = reinterpret_cast<IReadStream*>(opaque);
+                    return is->read(buffer, size);
                 },
                 [](void* opaque, long long offset, int way) -> long long {
-                    auto is = reinterpret_cast<std::streambuf*>(opaque);
-                    return is->pubseekoff(offset, way == SEEK_SET ? std::ios_base::beg : (way == SEEK_END ? std::ios_base::end : std::ios_base::cur));
+                    auto is = reinterpret_cast<IReadStream*>(opaque);
+                    return is->seek(offset, way);
                 }, c_params, n_params, &capture))
             {
                 CV_Assert(capture);
-                return makePtr<PluginCapture>(plugin_api, capture);
+                return makePtr<PluginCapture>(plugin_api, capture, stream);
             }
         }
         else if (stream)
@@ -512,8 +513,8 @@ public:
         return Ptr<PluginCapture>();
     }
 
-    PluginCapture(const OpenCV_VideoIO_Capture_Plugin_API* plugin_api, CvPluginCapture capture)
-        : plugin_api_(plugin_api), capture_(capture)
+    PluginCapture(const OpenCV_VideoIO_Capture_Plugin_API* plugin_api, CvPluginCapture capture, Ptr<IReadStream> readStream = nullptr)
+        : plugin_api_(plugin_api), capture_(capture), readStream_(readStream)
     {
         CV_Assert(plugin_api_); CV_Assert(capture_);
     }
