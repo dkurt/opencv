@@ -25,6 +25,7 @@
 #include "hal_rvv_1p0/minmax.hpp" // core
 #include "hal_rvv_1p0/atan.hpp" // core
 #include "hal_rvv_1p0/norm.hpp" // core
+#include "hal_rvv_1p0/normdiff.hpp" // core
 #endif
 
 #endif
