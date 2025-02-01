@@ -3,9 +3,8 @@ name: Benchmark OpenCV on RISC-V
 on: [pull_request]
 
 jobs:
-  build_with_gcc:
+  build:
     runs-on: ubuntu-24.04
-
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -15,10 +14,8 @@ jobs:
           python3 -m pip install gdown
           gdown https://drive.google.com/uc?id=1dww_ZMX68nTf5UmlDzDN3fJy4yLr2i4u
           tar -xf sc-dt-2024.09.tar.gz
-          sudo mkdir /opt/riscv
-          sudo mkdir /opt/rvv-llvm
-          sudo cp -r sc-dt/riscv-gcc/* /opt/riscv
-          sudo cp -r sc-dt/llvm/* /opt/rvv-llvm
+          sudo cp -r sc-dt/riscv-gcc /opt/riscv
+          sudo cp -r sc-dt/llvm /opt/rvv-llvm
 
     - name: Cross-compile OpenCV
       run: |
@@ -31,3 +28,24 @@ jobs:
           -DBUILD_LIST=ts,core
 
         cmake --build . -j$(nproc --all)
+
+    - name: Upload binaries
+      uses: actions/upload-artifact@v4
+      with:
+        name: opencv_build
+        path: |
+          opencv_build/bin/*
+          opencv_build/lib/*
+
+  test:
+    runs-on: self-hosted
+    needs: build
+    steps:
+    - name: Download binaries
+      uses: actions/download-artifact@v4
+      with:
+        name: opencv_build
+
+    - name: Run performance tests
+      run: |
+        ./opencv_perf_core
