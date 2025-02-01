@@ -8,6 +8,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+      with:
+        path: opencv
 
     - name: Install prerequisities
       run: |
@@ -19,15 +21,16 @@ jobs:
 
     - name: Cross-compile OpenCV
       run: |
-        mkdir opencv_build && cd opencv_build
-        cmake .. \
-          -DCMAKE_TOOLCHAIN_FILE=$(realpath ../platforms/linux/riscv64-clang.toolchain.cmake) \
+        cmake \
+          -DCMAKE_TOOLCHAIN_FILE=$(realpath opencv/platforms/linux/riscv64-clang.toolchain.cmake) \
           -DRISCV_RVV_SCALABLE=ON \
+          -DWITH_OPENCL=OFF \
           -DCPU_BASELINE_REQUIRE=RVV \
           -DCMAKE_BUILD_TYPE=Release \
-          -DBUILD_LIST=ts,core
+          -DBUILD_LIST=ts,core \
+          -S opencv -B opencv_build
 
-        cmake --build . -j$(nproc --all)
+        cmake --build opencv_build -j$(nproc --all)
 
     - name: Upload binaries
       uses: actions/upload-artifact@v4
@@ -48,4 +51,6 @@ jobs:
 
     - name: Run performance tests
       run: |
-        ./opencv_perf_core
+        export LD_LIBRARY_PATH=./lib:$LD_LIBRARY_PATH
+        chmod +x ./bin/*
+        ./bin/opencv_perf_core
