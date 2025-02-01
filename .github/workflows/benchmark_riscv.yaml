@@ -1,0 +1,51 @@
+name: Benchmark OpenCV on RISC-V
+
+on: [pull_request]
+
+jobs:
+  build_with_gcc:
+    runs-on: ubuntu-24.04
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install prerequisities
+      run: |
+          echo "Types: deb" | sudo tee /etc/apt/sources.list.d/ubuntu.sources
+          echo "URIs: http://ports.ubuntu.com/ubuntu-ports/" | sudo tee -a /etc/apt/sources.list.d/ubuntu.sources
+          echo "Suites: noble noble-updates noble-backports" | sudo tee -a /etc/apt/sources.list.d/ubuntu.sources
+          echo "Components: main universe restricted multiverse" | sudo tee -a /etc/apt/sources.list.d/ubuntu.sources
+          echo "Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg" | sudo tee -a /etc/apt/sources.list.d/ubuntu.sources
+          echo "Architectures: riscv64" | sudo tee -a /etc/apt/sources.list.d/ubuntu.sources
+          echo "" | sudo tee -a /etc/apt/sources.list.d/ubuntu.sources
+
+          echo "Types: deb" | sudo tee -a /etc/apt/sources.list.d/ubuntu.sources
+          echo "URIs: http://archive.ubuntu.com/ubuntu/" | sudo tee -a /etc/apt/sources.list.d/ubuntu.sources
+          echo "Suites: noble noble-updates noble-backports" | sudo tee -a /etc/apt/sources.list.d/ubuntu.sources
+          echo "Components: main universe restricted multiverse" | sudo tee -a /etc/apt/sources.list.d/ubuntu.sources
+          echo "Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg" | sudo tee -a /etc/apt/sources.list.d/ubuntu.sources
+          echo "Architectures: amd64" | sudo tee -a /etc/apt/sources.list.d/ubuntu.sources
+          echo "" | sudo tee -a /etc/apt/sources.list.d/ubuntu.sources
+
+          echo "Types: deb" | sudo tee -a /etc/apt/sources.list.d/ubuntu.sources
+          echo "URIs: http://security.ubuntu.com/ubuntu/" | sudo tee -a /etc/apt/sources.list.d/ubuntu.sources
+          echo "Suites: noble-security" | sudo tee -a /etc/apt/sources.list.d/ubuntu.sources
+          echo "Components: main universe restricted multiverse" | sudo tee -a /etc/apt/sources.list.d/ubuntu.sources
+          echo "Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg" | sudo tee -a /etc/apt/sources.list.d/ubuntu.sources
+          echo "Architectures: amd64" | sudo tee -a /etc/apt/sources.list.d/ubuntu.sources
+
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+              crossbuild-essential-riscv64
+
+    - name: Cross-compile OpenCV
+      run: |
+        mkdir opencv_build && cd opencv_build
+        cmake .. \
+          -DCMAKE_TOOLCHAIN_FILE=$(realpath ../platforms/linux/riscv64-gcc.toolchain.cmake) \
+          -DENABLE_RVV=ON \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_LIST=ts,core
+
+        cmake --build . -j$(nproc --all)
