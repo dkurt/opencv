@@ -37,6 +37,7 @@ jobs:
       with:
         name: opencv_build
         path: |
+          opencv/modules/ts/misc/summary.py
           opencv_build/bin/*
           opencv_build/lib/*
 
@@ -53,4 +54,6 @@ jobs:
       run: |
         export LD_LIBRARY_PATH=./lib:$LD_LIBRARY_PATH
         chmod +x ./bin/*
-        ./bin/opencv_perf_core
+        ./bin/opencv_perf_core --gtest_output=xml:pr.xml --gtest_filter=*minMaxLoc*
+        ./bin/opencv_perf_core --gtest_output=xml:pr2.xml --gtest_filter=*minMaxLoc*
+        python3 summary.py pr.xml pr2.xml
