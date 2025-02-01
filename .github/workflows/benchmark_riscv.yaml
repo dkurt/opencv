@@ -44,6 +44,10 @@ jobs:
     runs-on: self-hosted
     needs: build
     steps:
+    - name: Clean workspace
+      run: |
+        rm -rf ${{ github.workspace }}/*
+
     - name: Download binaries
       uses: actions/download-artifact@v4
       with:
@@ -53,7 +57,7 @@ jobs:
       run: |
         export LD_LIBRARY_PATH=./lib:$LD_LIBRARY_PATH
         chmod +x ./bin/*
-        ./bin/opencv_perf_core --gtest_output=xml:pr.xml --gtest_filter=*minMaxLoc*
+        ./bin/opencv_perf_core --gtest_output=xml:pr.xml ${{ github.event.pull_request.body }}
 
     - name: Run performance tests (baseline)
       run: |
@@ -61,10 +65,13 @@ jobs:
         python3 -m gdown https://drive.google.com/uc?id=16xJ1Kg_lG8xVIIiS63saNvsupeCKC9CF
         tar -xf opencv_rvv_baseline.tar.gz
         export LD_LIBRARY_PATH=./lib:$LD_LIBRARY_PATH
-        ./bin/opencv_perf_core --gtest_output=xml:../baseline.xml --gtest_filter=*minMaxLoc*
+        ./bin/opencv_perf_core --gtest_output=xml:../baseline.xml ${{ github.event.pull_request.body }}
 
     - name: Compare
       run: |
+        wget https://raw.githubusercontent.com/opencv/opencv/refs/heads/4.x/modules/ts/misc/color.py
+        wget https://raw.githubusercontent.com/opencv/opencv/refs/heads/4.x/modules/ts/misc/table_formatter.py
+        wget https://raw.githubusercontent.com/opencv/opencv/refs/heads/4.x/modules/ts/misc/testlog_parser.py
         wget https://raw.githubusercontent.com/opencv/opencv/refs/heads/4.x/modules/ts/misc/summary.py
         python3 summary.py baseline.xml pr.xml
 
