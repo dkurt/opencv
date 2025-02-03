@@ -57,7 +57,7 @@ jobs:
       run: |
         export LD_LIBRARY_PATH=./lib:$LD_LIBRARY_PATH
         chmod +x ./bin/*
-        ./bin/opencv_perf_core --gtest_output=xml:pr.xml ${{ github.event.pull_request.body }}
+        ./bin/opencv_perf_core --gtest_output=xml:pr.xml --gtest_filter=*Norm*
 
     - name: Run performance tests (baseline)
       run: |
@@ -65,7 +65,7 @@ jobs:
         python3 -m gdown https://drive.google.com/uc?id=16xJ1Kg_lG8xVIIiS63saNvsupeCKC9CF
         tar -xf opencv_rvv_baseline.tar.gz
         export LD_LIBRARY_PATH=./lib:$LD_LIBRARY_PATH
-        ./bin/opencv_perf_core --gtest_output=xml:../baseline.xml ${{ github.event.pull_request.body }}
+        ./bin/opencv_perf_core --gtest_output=xml:../baseline.xml --gtest_filter=*Norm*
 
     - name: Compare
       run: |
