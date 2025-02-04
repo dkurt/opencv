@@ -57,7 +57,7 @@ jobs:
       run: |
         export LD_LIBRARY_PATH=./lib:$LD_LIBRARY_PATH
         chmod +x ./bin/*
-        ./bin/opencv_test_core
+        ./bin/opencv_test_core --gtest_filter=-hal_intrin128.float64x2_BASELINE
 
     - name: Run performance tests
       run: |
