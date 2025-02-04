@@ -38,6 +38,7 @@ jobs:
         name: opencv_build
         path: |
           opencv_build/bin/opencv_perf_core
+          opencv_build/bin/opencv_test_core
           opencv_build/lib/libopencv_core*
 
   test:
