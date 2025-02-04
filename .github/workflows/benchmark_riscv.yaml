@@ -37,9 +37,8 @@ jobs:
       with:
         name: opencv_build
         path: |
-          opencv_build/bin/opencv_perf_core
-          opencv_build/bin/opencv_test_core
-          opencv_build/lib/libopencv_core*
+          opencv_build/bin/*
+          opencv_build/lib/*
 
   test:
     runs-on: self-hosted
