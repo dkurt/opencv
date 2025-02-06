@@ -53,6 +53,8 @@ inline int addWeighted8u( const uchar* src1, size_t step1, const uchar* src2, si
             j += vl;
         }
     }
+    
+    return 0;
 }
 
 } // namespace cv_hal_rvv
