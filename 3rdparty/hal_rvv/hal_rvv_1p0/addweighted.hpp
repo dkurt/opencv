@@ -33,20 +33,28 @@ inline int addWeighted8u( const uchar* src1, size_t step1, const uchar* src2, si
             vint16m2_t v_row1_ext = __riscv_vreinterpret_v_u16m2_i16m2(v_row1_w);
             vint16m2_t v_row2_ext = __riscv_vreinterpret_v_u16m2_i16m2(v_row2_w);
 
+            // Преобразование в float16m2_t
+            vfloat16m2_t v_row1_f = __riscv_vfwcvt_x_f_v_f16m2(v_row1_ext, vl);
+            vfloat16m2_t v_row2_f = __riscv_vfwcvt_x_f_v_f16m2(v_row2_ext, vl);
+
             // Применение коэффициентов alpha, beta и gamma
-            vint16m2_t v_res = __riscv_vmul_vx_i16m2(v_row1_ext, alpha, vl);
-            v_res = __riscv_vmacc_vx_i16m2(v_res, beta, v_row2_ext, vl);
-            v_res = __riscv_vadd_vx_i16m2(v_res, gamma, vl);
-            
+            vfloat16m2_t v_res_f = __riscv_vfmul_vf_f16m2(v_row1_f, alpha, vl);
+            v_res_f = __riscv_vfmac_vf_f16m2(v_res_f, beta, v_row2_f, vl);
+            v_res_f = __riscv_vfadd_vf_f16m2(v_res_f, gamma, vl);
+
             // Ограничение результатов в пределах [0, 255]
-            v_res = __riscv_vmax_vx_i16m2(v_res, 0, vl);
-            v_res = __riscv_vmin_vx_i16m2(v_res, 255, vl);
+            v_res_f = __riscv_vfmax_vf_f16m2(v_res_f, 0.0f, vl);
+            v_res_f = __riscv_vfmin_vf_f16m2(v_res_f, 255.0f, vl);
 
-            // Преобразование обратно в 16-беззнаковый формат
-            vuint16m2_t v_res_unsigned = __riscv_vreinterpret_v_i16m2_u16m2(v_res);
+            // Преобразование обратно в uint8m1_t
+            vuint16m2_t v_res_u16 = __riscv_vfwcvt_f_x_v_u16m2(v_res_f, vl);
+            vuint8m1_t v_dst = __riscv_vnclipu_wv_u8m1(v_res_u16, shift_vec, 0, vl);
+            
+            // // Преобразование обратно в 16-беззнаковый формат
+            // vuint16m2_t v_res_unsigned = __riscv_vreinterpret_v_i16m2_u16m2(v_res);
 
-            vuint8m1_t shift_vec = __riscv_vmv_v_x_u8m1(8, vl);
-            vuint8m1_t v_dst = __riscv_vnclipu_wv_u8m1(v_res_unsigned, shift_vec, 0, vl);
+            // vuint8m1_t shift_vec = __riscv_vmv_v_x_u8m1(8, vl);
+            // vuint8m1_t v_dst = __riscv_vnclipu_wv_u8m1(v_res_unsigned, shift_vec, 0, vl);
 
             __riscv_vse8_v_u8m1(row_dst + j, v_dst, vl);
 
