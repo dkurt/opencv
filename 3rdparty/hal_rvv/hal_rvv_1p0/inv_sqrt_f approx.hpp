@@ -10,8 +10,6 @@ namespace cv { namespace cv_hal_rvv {
 
 #undef cv_hal_invSqrt32f
 #define cv_hal_invSqrt32f cv::cv_hal_rvv::invSqrt32f
-// #undef cv_hal_invSqrt64f
-// #define cv_hal_invSqrt64f cv::cv_hal_rvv::invSqrt64f
 
 inline int invSqrt32f (const float *src, float *dst, int len) {
     const size_t vl = __riscv_vsetvl_e32m4(len);
@@ -20,8 +18,7 @@ inline int invSqrt32f (const float *src, float *dst, int len) {
         vfloat32m4_t vres;
         {
             const vfloat32m4_t vsrc = __riscv_vle32_v_f32m4(&src[i], vl);
-            const vfloat64m8_t v_conv_64f = __riscv_vfwcvt_f_f_v_f64m8(vsrc, vl);
-            vres = __riscv_vfncvt_f_f_w_f32m4(__riscv_vfrsqrt7_v_f64m8(v_conv_64f, vl), vl);
+            vres = __riscv_vfncvt_f_f_w_f32m4(__riscv_vfrsqrt7_v_f64m8(__riscv_vfwcvt_f_f_v_f64m8(vsrc, vl), vl), vl);
         }
 
         // Newton's: x_n+1 = x_n*(1.5 − 0.5*a*x_n^2)

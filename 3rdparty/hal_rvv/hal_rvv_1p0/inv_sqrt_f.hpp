@@ -10,8 +10,6 @@ namespace cv { namespace cv_hal_rvv {
 
 #undef cv_hal_invSqrt32f
 #define cv_hal_invSqrt32f cv::cv_hal_rvv::invSqrt32f
-// #undef cv_hal_invSqrt64f
-// #define cv_hal_invSqrt64f cv::cv_hal_rvv::invSqrt64f
 
 inline int invSqrt32f (const float *src, float *dst, const int len) {
     const size_t vl = __riscv_vsetvl_e32m8(len);
@@ -19,7 +17,7 @@ inline int invSqrt32f (const float *src, float *dst, const int len) {
     auto calc_fun = [&](const size_t i, const size_t vl) {
         vfloat32m8_t vsrc = __riscv_vle32_v_f32m8(&src[i], vl), 
                     vres;
-        vres = __riscv_vfsqrt_v_f32m8_tu(vres, vsrc, vl);
+        vres = __riscv_vfsqrt_v_f32m8(vsrc, vl);
         vres =  __riscv_vfrdiv_vf_f32m8(vres, 1., vl);
         __riscv_vse32_v_f32m8(&dst[i], vres, vl);
     };

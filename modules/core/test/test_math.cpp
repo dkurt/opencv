@@ -3071,7 +3071,7 @@ TEST(Core_Pow, special)
         int ipower = cvRound(power);
         bool is_ipower = ipower == power;
         cv::pow(mtx, power, result);
-        for( int j = 0; j < n; j++ )
+        for( size_t j = 0; j < n; j++ )
         {
             double val = type == CV_32F ? (double)mtx.at<float>(j) : mtx.at<double>(j);
             double r = type == CV_32F ? (double)result.at<float>(j) : result.at<double>(j);
@@ -3107,15 +3107,13 @@ TEST(Core_Pow, special)
 
 TEST(Core_Pow, invSqrt32f)
 {
-    for( int i = 0; i < 100; i++ )
+    for ( int i = 0; i < 100; i++ )
     {
-        int n = theRNG().uniform(1, 30);
-        Mat mtx0(1, n, CV_8S), mtx, result;
-        randu(mtx0, -5, 5);
-
+        size_t n = theRNG().uniform(1, 30);
         int type = CV_32F;
+        Mat mtx(1, n, type), result;
+        randu(mtx, -5.f, +5.f);
         double eps = 1e-3;
-        mtx0.convertTo(mtx, type);
         // generate power from [-n, n] interval with 1/8 step - enough to check various cases.
         double power = -0.5;
         int ipower = cvRound(power);
@@ -3123,8 +3121,8 @@ TEST(Core_Pow, invSqrt32f)
         cv::pow(mtx, power, result);
         for( int j = 0; j < n; j++ )
         {
-            double val = type == CV_32F ? (double)mtx.at<float>(j) : mtx.at<double>(j);
-            double r = type == CV_32F ? (double)result.at<float>(j) : result.at<double>(j);
+            double val = (double)mtx.at<float>(j);
+            double r = (double)result.at<float>(j);
             double r0;
             if( power == 0. )
                 r0 = 1;

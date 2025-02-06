@@ -116,6 +116,7 @@ CV_ENUM(SolutionsEnum, NO_SOLUTIONS, ONE_SOLUTION, MANY_SOLUTIONS)
 // typedef perf::TestBase MyTests;
 PERF_TEST(PowTests, invSqrt32f) {
     size_t size = 1024;
+    printf("Test pow(x, -1/2) matrix size: %ldx%ld\n", size, size);
     RNG& rng = theRNG();
     Mat A = buildRandomMat(size, size, CV_32F, rng, size, false);
     Mat B (size, size, {0});
