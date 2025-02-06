@@ -113,6 +113,18 @@ enum SolutionsOptions
 
 CV_ENUM(SolutionsEnum, NO_SOLUTIONS, ONE_SOLUTION, MANY_SOLUTIONS)
 
+// typedef perf::TestBase MyTests;
+PERF_TEST(PowTests, invSqrt32f) {
+    size_t size = 1024;
+    RNG& rng = theRNG();
+    Mat A = buildRandomMat(size, size, CV_32F, rng, size, false);
+    Mat B (size, size, {0});
+
+    TEST_CYCLE()
+        cv::pow(A, -0.5f, B);
+    SANITY_CHECK_NOTHING();
+}
+
 typedef perf::TestBaseWithParam<std::tuple<int, RankEnum, MatDepth, SolveDecompEnum, bool, SolutionsEnum>> SolveTest;
 
 PERF_TEST_P(SolveTest, randomMat, ::testing::Combine(

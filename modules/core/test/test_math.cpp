@@ -3105,6 +3105,56 @@ TEST(Core_Pow, special)
     }
 }
 
+TEST(Core_Pow, invSqrt32f)
+{
+    for( int i = 0; i < 100; i++ )
+    {
+        int n = theRNG().uniform(1, 30);
+        Mat mtx0(1, n, CV_8S), mtx, result;
+        randu(mtx0, -5, 5);
+
+        int type = CV_32F;
+        double eps = 1e-3;
+        mtx0.convertTo(mtx, type);
+        // generate power from [-n, n] interval with 1/8 step - enough to check various cases.
+        double power = -0.5;
+        int ipower = cvRound(power);
+        bool is_ipower = ipower == power;
+        cv::pow(mtx, power, result);
+        for( int j = 0; j < n; j++ )
+        {
+            double val = type == CV_32F ? (double)mtx.at<float>(j) : mtx.at<double>(j);
+            double r = type == CV_32F ? (double)result.at<float>(j) : result.at<double>(j);
+            double r0;
+            if( power == 0. )
+                r0 = 1;
+            else if( is_ipower )
+            {
+                r0 = 1;
+                for( int k = 0; k < std::abs(ipower); k++ )
+                    r0 *= val;
+                if( ipower < 0 )
+                    r0 = 1./r0;
+            }
+            else
+                r0 = std::pow(val, power);
+            if( cvIsInf(r0) )
+            {
+                ASSERT_TRUE(cvIsInf(r) != 0);
+            }
+            else if( cvIsNaN(r0) )
+            {
+                ASSERT_TRUE(cvIsNaN(r) != 0);
+            }
+            else
+            {
+                ASSERT_TRUE(cvIsInf(r) == 0 && cvIsNaN(r) == 0);
+                ASSERT_LT(fabs(r - r0), eps);
+            }
+        }
+    }
+}
+
 TEST(Core_Cholesky, accuracy64f)
 {
     const int n = 5;
