@@ -3304,7 +3304,30 @@ TEST_P(Core_LUT, accuracy_multi)
     ASSERT_EQ(0, cv::norm(output, gt, cv::NORM_INF));
 }
 
+TEST(AddWeighted, mytest) {
+    Mat src1(10, 10, CV_8UC1);
+    Mat src2(10, 10, CV_8UC1);
+    Mat dst(10, 10, CV_8UC1);
+    dst.setTo(0);
+    randu(src1, 0, 255);
+    randu(src2, 0, 255);
 
+    std::cout << "src1: " << std::endl << src1 << std::endl;
+    std::cout << "src2: " << std::endl << src2 << std::endl;
+
+    addWeighted(src1, 1, src2, 1, 0, dst);
+    std::cout << "dst: " << std::endl << dst << std::endl;
+
+    Mat ref = src1 + src2;
+
+    for (int i = 0; i < src1.rows; ++i) {
+        for (int j = 0; j < src1.cols; ++j) {
+            ref.at<uchar>(i, j) = saturate_cast<uchar>(src1.at<uchar>(i, j) + src2.at<uchar>(i, j));
+        }
+    }
+    std::cout << "ref: " << std::endl << ref << std::endl;
+    ASSERT_EQ(0, cv::norm(dst, ref, cv::NORM_INF));
+}
 INSTANTIATE_TEST_CASE_P(/**/, Core_LUT, LutMatType::all());
 
 }} // namespace
