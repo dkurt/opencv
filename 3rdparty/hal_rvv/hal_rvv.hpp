@@ -24,6 +24,7 @@
 #include "hal_rvv_1p0/mean.hpp" // core
 #include "hal_rvv_1p0/minmax.hpp" // core
 #include "hal_rvv_1p0/atan.hpp" // core
+#include "hal_rvv_1p0/exp32f.hpp" // core
 #endif
 
 #endif
