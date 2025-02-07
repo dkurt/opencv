@@ -65,21 +65,21 @@ jobs:
         chmod +x ./bin/*
         ./bin/opencv_perf_core --gtest_output=xml:pr.xml ${{ github.event.pull_request.body }}
 
-    - name: Run performance tests (baseline)
-      run: |
-        mkdir opencv_baseline && cd opencv_baseline
-        python3 -m gdown https://drive.google.com/uc?id=16xJ1Kg_lG8xVIIiS63saNvsupeCKC9CF
-        tar -xf opencv_rvv_baseline.tar.gz
-        export LD_LIBRARY_PATH=./lib:$LD_LIBRARY_PATH
-        ./bin/opencv_perf_core --gtest_output=xml:../baseline.xml ${{ github.event.pull_request.body }}
+    # - name: Run performance tests (baseline)
+    #   run: |
+    #     mkdir opencv_baseline && cd opencv_baseline
+    #     python3 -m gdown https://drive.google.com/uc?id=16xJ1Kg_lG8xVIIiS63saNvsupeCKC9CF
+    #     tar -xf opencv_rvv_baseline.tar.gz
+    #     export LD_LIBRARY_PATH=./lib:$LD_LIBRARY_PATH
+    #     ./bin/opencv_perf_core --gtest_output=xml:../baseline.xml ${{ github.event.pull_request.body }}
 
-    - name: Compare
-      run: |
-        wget https://raw.githubusercontent.com/opencv/opencv/refs/heads/4.x/modules/ts/misc/color.py
-        wget https://raw.githubusercontent.com/opencv/opencv/refs/heads/4.x/modules/ts/misc/table_formatter.py
-        wget https://raw.githubusercontent.com/opencv/opencv/refs/heads/4.x/modules/ts/misc/testlog_parser.py
-        wget https://raw.githubusercontent.com/opencv/opencv/refs/heads/4.x/modules/ts/misc/summary.py
-        python3 summary.py baseline.xml pr.xml
+    # - name: Compare
+    #   run: |
+    #     wget https://raw.githubusercontent.com/opencv/opencv/refs/heads/4.x/modules/ts/misc/color.py
+    #     wget https://raw.githubusercontent.com/opencv/opencv/refs/heads/4.x/modules/ts/misc/table_formatter.py
+    #     wget https://raw.githubusercontent.com/opencv/opencv/refs/heads/4.x/modules/ts/misc/testlog_parser.py
+    #     wget https://raw.githubusercontent.com/opencv/opencv/refs/heads/4.x/modules/ts/misc/summary.py
+    #     python3 summary.py baseline.xml pr.xml
 
     - name: Upload binaries
       uses: actions/upload-artifact@v4
