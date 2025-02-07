@@ -1,71 +1,77 @@
-#ifndef OPENCV_HAL_RVV_ADDWEIGHTED_HPP_INCLUDED
-#define OPENCV_HAL_RVV_ADDWEIGHTED_HPP_INCLUDED
-
-#include <riscv_vector.h>
-
-namespace cv { namespace cv_hal_rvv {
-
-#undef cv_hal_addWeighted8u
-#define cv_hal_addWeighted8u cv::cv_hal_rvv::addWeighted8u
-
-inline int addWeighted8u( const uchar* src1, size_t step1, const uchar* src2, size_t step2, 
-                        uchar* dst, size_t step, int width, int height, const void* _scalars ) {
-    const float* scalars = static_cast<const float*>(_scalars);
-    float alpha = scalars[0];
-    float beta = scalars[1];
+#ifndef OPENCV_HAL_RVV_ADDWEIGHTED_HPP_INCLUDED 
+#define OPENCV_HAL_RVV_ADDWEIGHTED_HPP_INCLUDED 
+ 
+#include <riscv_vector.h> 
+ 
+namespace cv { namespace cv_hal_rvv { 
+ 
+#undef cv_hal_addWeighted8u 
+#define cv_hal_addWeighted8u cv::cv_hal_rvv::addWeighted8u 
+ 
+inline int addWeighted8u(const uchar* src1, size_t step1, const uchar* src2, size_t step2, 
+    uchar* dst, size_t step, int width, int height, const void* _scalars) { 
+    const float* scalars = static_cast<const float*>(_scalars); 
+    float alpha = scalars[0]; 
+    float beta = scalars[1]; 
     float gamma = scalars[2];
+ 
+    int total_elements = width * height; // Total number of elements in the matrix
 
-    for (int i = 0; i < height; ++i) {
-        const uint8_t* row1 = src1 + i * step1;
-        const uint8_t* row2 = src2 + i * step2;
-        uint8_t* row_dst = dst + i * step;
-    
-        int j = 0;
-        while (j < width) {
-            size_t vl = __riscv_vsetvl_e8m1(width - j);
+    int j = 0;
+    while (j < total_elements) {
+        size_t vl = __riscv_vsetvl_e8m1(total_elements - j);
 
-            vuint8m1_t v_row1 = __riscv_vle8_v_u8m1(row1 + j, vl);
-            vuint8m1_t v_row2 = __riscv_vle8_v_u8m1(row2 + j, vl);
+        // Calculate the 1D index for src1, src2, and dst
+        const uint8_t* p_src1 = reinterpret_cast<const uint8_t*>(src1 + (j / width) * step1 + (j % width));
+        const uint8_t* p_src2 = reinterpret_cast<const uint8_t*>(src2 + (j / width) * step2 + (j % width));
+        uint8_t* p_dst = reinterpret_cast<uint8_t*>(dst + (j / width) * step + (j % width));
 
-            vuint16m2_t v_row1_w = __riscv_vwcvtu_x_x_v_u16m2(v_row1, vl);
-            vuint16m2_t v_row2_w = __riscv_vwcvtu_x_x_v_u16m2(v_row2, vl);
+        // Load data from src1 and src2
+        vuint8m1_t v_row1 = __riscv_vle8_v_u8m1(p_src1, vl);
+        vuint8m1_t v_row2 = __riscv_vle8_v_u8m1(p_src2, vl);
 
-            vint16m2_t v_row1_ext = __riscv_vreinterpret_v_u16m2_i16m2(v_row1_w);
-            vint16m2_t v_row2_ext = __riscv_vreinterpret_v_u16m2_i16m2(v_row2_w);
+        // Convert to 16-bit signed integers
+        vuint16m2_t v_row1_u16 = __riscv_vwcvtu_x_x_v_u16m2(v_row1, vl);
+        vuint16m2_t v_row2_u16 = __riscv_vwcvtu_x_x_v_u16m2(v_row2, vl);
+        
+        vint16m2_t v_row1_i16 = __riscv_vreinterpret_v_u16m2_i16m2(v_row1_u16);
+        vint16m2_t v_row2_i16 = __riscv_vreinterpret_v_u16m2_i16m2(v_row2_u16);
 
-            // Преобразование в float16m2_t
-            vfloat16m2_t v_row1_f = __riscv_vfwcvt_x_f_v_f16m2(v_row1_ext, vl);
-            vfloat16m2_t v_row2_f = __riscv_vfwcvt_x_f_v_f16m2(v_row2_ext, vl);
+        // Extend to 32-bit signed integers
+        vint32m4_t v_row1_i32 = __riscv_vwcvt_x_x_v_i32m4(v_row1_i16, vl);
+        vint32m4_t v_row2_i32 = __riscv_vwcvt_x_x_v_i32m4(v_row2_i16, vl);
 
-            // Применение коэффициентов alpha, beta и gamma
-            vfloat16m2_t v_res_f = __riscv_vfmul_vf_f16m2(v_row1_f, alpha, vl);
-            v_res_f = __riscv_vfmac_vf_f16m2(v_res_f, beta, v_row2_f, vl);
-            v_res_f = __riscv_vfadd_vf_f16m2(v_res_f, gamma, vl);
+        // // Convert to 32-bit floating-point vectors
+        // vfloat32m4_t v_alpha = __riscv_vfmv_v_f_f32m4(alpha, vl);
+        // vfloat32m4_t v_beta = __riscv_vfmv_v_f_f32m4(beta, vl);
+        // vfloat32m4_t v_gamma = __riscv_vfmv_v_f_f32m4(gamma, vl);
 
-            // Ограничение результатов в пределах [0, 255]
-            v_res_f = __riscv_vfmax_vf_f16m2(v_res_f, 0.0f, vl);
-            v_res_f = __riscv_vfmin_vf_f16m2(v_res_f, 255.0f, vl);
+        vfloat32m4_t v_row1_f = __riscv_vfcvt_f_x_v_f32m4(v_row1_i32, vl);
+        vfloat32m4_t v_row2_f = __riscv_vfcvt_f_x_v_f32m4(v_row2_i32, vl);
 
-            // Преобразование обратно в uint8m1_t
-            vuint16m2_t v_res_u16 = __riscv_vfwcvt_f_x_v_u16m2(v_res_f, vl);
-            vuint8m1_t v_dst = __riscv_vnclipu_wv_u8m1(v_res_u16, shift_vec, 0, vl);
-            
-            // // Преобразование обратно в 16-беззнаковый формат
-            // vuint16m2_t v_res_unsigned = __riscv_vreinterpret_v_i16m2_u16m2(v_res);
+        // Apply coefficients alpha, beta, and gamma
+        vfloat32m4_t v_res_f = __riscv_vfmul_vf_f32m4(v_row1_f, alpha, vl);
+        v_res_f = __riscv_vfmacc_vf_f32m4(v_res_f, beta, v_row2_f, vl);
+        v_res_f = __riscv_vfadd_vf_f32m4(v_res_f, gamma, vl);
 
-            // vuint8m1_t shift_vec = __riscv_vmv_v_x_u8m1(8, vl);
-            // vuint8m1_t v_dst = __riscv_vnclipu_wv_u8m1(v_res_unsigned, shift_vec, 0, vl);
+        // Clamp results to [0, 255]
+        v_res_f = __riscv_vfmax_vf_f32m4(v_res_f, 0.0f, vl);
+        v_res_f = __riscv_vfmin_vf_f32m4(v_res_f, 255.0f, vl);
 
-            __riscv_vse8_v_u8m1(row_dst + j, v_dst, vl);
+        // Convert vfloat32m4_t to vuint8m1_t
+        vint32m4_t v_dst_i32 = __riscv_vfcvt_rtz_x_f_v_i32m4(v_res_f, vl); 
+        vint16m2_t v_dst_i16 = __riscv_vncvt_x_x_w_i16m2(v_dst_i32, vl);
+        vint8m1_t v_dst_i8 = __riscv_vncvt_x_x_w_i8m1(v_dst_i16, vl);
+        vuint8m1_t v_dst_u8 = __riscv_vreinterpret_v_i8m1_u8m1(v_dst_i8);
 
-            j += vl;
-        }
+        // Store result
+        __riscv_vse8_v_u8m1(p_dst, v_dst_u8, vl);
+
+        j += vl;
     }
-    
     return 0;
-}
-
-} // namespace cv_hal_rvv
-} // namespace cv
-
+}  
+} // namespace cv_hal_rvv 
+} // namespace cv 
+ 
 #endif // OPENCV_HAL_RVV_ADDWEIGHTED_HPP_INCLUDED
