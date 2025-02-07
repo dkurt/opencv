@@ -8,7 +8,7 @@ namespace cv { namespace cv_hal_rvv {
 #undef cv_hal_exp32f
 #define cv_hal_exp32f cv::cv_hal_rvv::exp32f
 
-inline void exp32f(const float* src, float* dst, int n) {
+inline int exp32f(const float* src, float* dst, int n) {
     ssize_t i = 0;
     ssize_t vlmax = __riscv_vsetvlmax_e32m1();
 
@@ -28,7 +28,7 @@ inline void exp32f(const float* src, float* dst, int n) {
                     v_term = __riscv_vfdiv_vv_f32m1(v_term, v_n, vl);
                     v_result = __riscv_vfadd_vv_f32m1(v_result, v_term, vl);
             }
-            __riscv_vse32_v_f32m1(&result[i], v_result, vl);
+            __riscv_vse32_v_f32m1(&dst[i], v_result, vl);
             i += vl;
     }
     if(i < n) {
@@ -44,8 +44,9 @@ inline void exp32f(const float* src, float* dst, int n) {
                     v_term = __riscv_vfdiv_vv_f32m1(v_term, v_n, remaining);
                     v_result = __riscv_vfadd_vv_f32m1(v_result, v_term, remaining);
             }
-            __riscv_vse32_v_f32m1(&result[i], v_result, remaining);
+            __riscv_vse32_v_f32m1(&dst[i], v_result, remaining);
     }
+    return 0;
 
 }
 
