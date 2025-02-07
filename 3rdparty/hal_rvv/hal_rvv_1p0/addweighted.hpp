@@ -11,16 +11,17 @@ namespace cv { namespace cv_hal_rvv {
 inline int addWeighted8u(const uchar* src1, size_t step1, const uchar* src2, size_t step2, 
     uchar* dst, size_t step, int width, int height, const void* _scalars) {
     const float* scalars = static_cast<const float*>(_scalars); 
-    float alpha = scalars[0]; 
-    float beta = scalars[1]; 
-    float gamma = scalars[2];
-
-    int total_elements = width * height; // Total number of elements in the matrix 
+    int alpha = 1; 
+    int beta = 1; 
+    int gamma = 0;
+    
+    int total_elements = width * height;
     int j = 0;
 
     while (j < total_elements) {
         size_t vl = __riscv_vsetvl_e8m1(total_elements - j);
 
+        // Calculate the 1D index for src1, src2, and dst 
         const uint8_t* p_src1 = src1 + j;
         const uint8_t* p_src2 = src2 + j;
         uint8_t* p_dst = dst + j;
@@ -31,7 +32,14 @@ inline int addWeighted8u(const uchar* src1, size_t step1, const uchar* src2, siz
         vuint16m2_t v_row1_w = __riscv_vwcvtu_x_x_v_u16m2(v_row1, vl);
         vuint16m2_t v_row2_w = __riscv_vwcvtu_x_x_v_u16m2(v_row2, vl);
 
-        vuint16m2_t v_res = __riscv_vadd_vv_u16m2(v_row1_w, v_row2_w, vl);
+        // Compute weighted sum
+        vuint16m2_t v_res = __riscv_vmul_vx_u16m2(v_row1_w, alpha, vl);
+        v_res = __riscv_vwmaccu_vx_u16m2(v_res, beta, v_row2, vl);
+        v_res = __riscv_vadd_vx_u16m2(v_res, gamma, vl);
+
+        // Clamp results to [0, 255]
+        v_res = __riscv_vmaxu_vx_u16m2(v_res, 0.0f, vl);
+        v_res = __riscv_vminu_vx_u16m2(v_res, 255.0f, vl);
 
         vuint8m1_t v_dst_u8 = __riscv_vncvt_x_x_w_u8m1(v_res, vl);
 

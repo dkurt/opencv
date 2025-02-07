@@ -3326,7 +3326,7 @@ TEST(AddWeighted, mytest) {
         }
     }
     std::cout << "ref: " << std::endl << ref << std::endl;
-    // ASSERT_EQ(0, cv::norm(dst, ref, cv::NORM_INF));
+    ASSERT_EQ(0, cv::norm(dst, ref, cv::NORM_INF));
 }
 INSTANTIATE_TEST_CASE_P(/**/, Core_LUT, LutMatType::all());
 
