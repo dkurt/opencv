@@ -706,22 +706,27 @@ INSTANTIATE_TEST_CASE_P(/*nothing*/ , ArithmMixedTest,
     )
 );
 
-typedef Size_MatType InvSqrtFixture;
-PERF_TEST_P(InvSqrtFixture, InvSqrt, testing::Combine(
-    testing::Values(TYPICAL_MAT_SIZES),
-    testing::Values(CV_32FC1, CV_64FC1)))
-{
+typedef perf::TestBaseWithParam<std::tuple<cv::Size, int, bool>> SqrtFixture;
+PERF_TEST_P_(SqrtFixture, Sqrt) {
     Size sz = get<0>(GetParam());
     int type = get<1>(GetParam());
+    bool inverse = get<2>(GetParam());
 
     Mat src(sz, type), dst(sz, type);
     randu(src, FLT_EPSILON, 1000);
     declare.in(src).out(dst);
 
-    TEST_CYCLE() cv::pow(src, -0.5, dst);
+    TEST_CYCLE() cv::pow(src, inverse ? -0.5 : 0.5, dst);
 
     SANITY_CHECK_NOTHING();
 }
+INSTANTIATE_TEST_CASE_P(/*nothing*/ , SqrtFixture,
+    testing::Combine(
+        testing::Values(TYPICAL_MAT_SIZES),
+        testing::Values(CV_32FC1, CV_64FC1),
+        testing::Bool()
+    )
+);
 
 ///////////// Rotate ////////////////////////
 
@@ -814,5 +819,24 @@ INSTANTIATE_TEST_CASE_P(/*nothing*/ , PatchNaNsFixture,
         testing::Values(CV_32FC1, CV_32FC2, CV_32FC3, CV_32FC4)
     )
 );
+
+///////////// Magnitude ////////////////////////
+
+typedef Size_MatType MagnitudeFixture;
+PERF_TEST_P(MagnitudeFixture, Magnitude, testing::Combine(
+    testing::Values(TYPICAL_MAT_SIZES),
+    testing::Values(CV_32FC1, CV_64FC1)))
+{
+    const Size srcSize = get<0>(GetParam());
+    const int type = get<1>(GetParam());
+
+    Mat src1(srcSize, type), src2(srcSize, type),
+            dst(srcSize, type);
+    declare.in(src1, src2, WARMUP_RNG).out(dst);
+
+    TEST_CYCLE() cv::magnitude(src1, src2, dst);
+
+    SANITY_CHECK_NOTHING();
+}
 
 } // namespace
