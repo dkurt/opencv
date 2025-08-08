@@ -95,18 +95,20 @@ public:
     }
     virtual bool retrieveFrame_(int flag, cv::OutputArray frame) CV_OVERRIDE
     {
+        // std::cout << "retrieveFrame_" << std::endl;
         unsigned char* data = 0;
         int step=0, width=0, height=0, cn=0, depth=0;
 
+        CV_Assert(ffmpegCapture);
         if (!ffmpegCapture)
             return false;
 
         // if UMat, try GPU to GPU copy using OpenCL extensions
-        if (frame.isUMat()) {
+        // if (frame.isUMat() || frame.isGpuMat()) {
             if (ffmpegCapture->retrieveHWFrame(frame)) {
                 return true;
             }
-        }
+        // }
 
         if (flag == 0) {
             if (!icvRetrieveFrame2_FFMPEG_p(ffmpegCapture, &data, &step, &width, &height, &cn, &depth))
@@ -116,7 +118,7 @@ public:
             if (!ffmpegCapture->retrieveFrame(flag, &data, &step, &width, &height, &cn, &depth))
                 return false;
         }
-
+        // std::cout << (void*)frame.getMat().ptr<uint8_t>() << std::endl;
         cv::Mat(height, width, CV_MAKETYPE(depth, cn), data, step).copyTo(frame);
         return true;
     }

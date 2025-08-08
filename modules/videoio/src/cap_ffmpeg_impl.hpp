@@ -1279,8 +1279,11 @@ bool CvCapture_FFMPEG::open(const char* _filename, const Ptr<IStreamReader>& str
             const AVCodec *codec = NULL;
             err = -1;
 #if USE_AV_HW_CODECS
+// std::cout << "va_type " << va_type << std::endl;
+// std::cout << dict << std::endl;
+// std::cout << "codec_id " << codec_id << " " << AV_CODEC_ID_H264  << std::endl;
             HWAccelIterator accel_iter(va_type, false/*isEncoder*/, dict);
-            while (accel_iter.good())
+            while (accel_iter.good() || true)
             {
 #else
             do {
@@ -1288,11 +1291,15 @@ bool CvCapture_FFMPEG::open(const char* _filename, const Ptr<IStreamReader>& str
 #if USE_AV_HW_CODECS
                 accel_iter.parse_next();
                 AVHWDeviceType hw_type = accel_iter.hw_type();
+                hw_type = AV_HWDEVICE_TYPE_CUDA;
                 if (hw_type != AV_HWDEVICE_TYPE_NONE)
                 {
+                    printf("not none\n");
                     CV_LOG_DEBUG(NULL, "FFMPEG: trying to configure H/W acceleration: '" << accel_iter.hw_type_device_string() << "'");
                     AVPixelFormat hw_pix_fmt = AV_PIX_FMT_NONE;
                     codec = hw_find_codec(codec_id, hw_type, av_codec_is_decoder, accel_iter.disabled_codecs().c_str(), &hw_pix_fmt);
+                    codec = avcodec_find_decoder_by_name("h264_cuvid");
+                    // std::cout << "codec " << codec << std::endl;
                     if (codec)
                     {
 #ifdef CV_FFMPEG_CODECPAR
@@ -1305,6 +1312,8 @@ bool CvCapture_FFMPEG::open(const char* _filename, const Ptr<IStreamReader>& str
                         }
                         if (hw_pix_fmt != AV_PIX_FMT_NONE)
                             context->get_format = hw_get_format_callback; // set callback to select HW pixel format, not SW format
+                        // std::cout << accel_iter.device_subname() << std::endl;
+                        // std::cout << accel_iter.hw_type_device_string() << std::endl;
                         context->hw_device_ctx = hw_create_device(hw_type, hw_device, accel_iter.device_subname(), use_opencl != 0);
                         if (!context->hw_device_ctx)
                         {
@@ -1330,6 +1339,7 @@ bool CvCapture_FFMPEG::open(const char* _filename, const Ptr<IStreamReader>& str
                     {
                         CV_LOG_DEBUG(NULL, "FFMPEG: Using video_codec='" << video_codec_param->value << "'");
                         codec = avcodec_find_decoder_by_name(video_codec_param->value);
+                        // std::cout << "codec "<< codec <<std::endl;
                         if (!codec)
                         {
                             CV_LOG_ERROR(NULL, "Could not find decoder '" << video_codec_param->value << "'");
@@ -1409,7 +1419,7 @@ exit_func:
     // deactivate interrupt callback
     interrupt_metadata.timeout_after_ms = 0;
 #endif
-
+// std::cout << valid << std::endl;
     if( !valid )
         close();
 
@@ -1530,6 +1540,7 @@ bool CvCapture_FFMPEG::processRawPacket()
 
 bool CvCapture_FFMPEG::grabFrame()
 {
+    // std::cout << "grab start" << std::endl;
     if (rawSeek) {
         rawSeek = false;
         return true;
@@ -1560,7 +1571,7 @@ bool CvCapture_FFMPEG::grabFrame()
     // get the next frame
     while (!valid)
     {
-
+// std::cout << "a" << std::endl;
         _opencv_ffmpeg_av_packet_unref (&packet);
 
 #if USE_AV_INTERRUPT_CALLBACK
@@ -1570,11 +1581,13 @@ bool CvCapture_FFMPEG::grabFrame()
             break;
         }
 #endif
+// std::cout << "b" << std::endl;
 
         int ret = av_read_frame(ic, &packet);
 
         if (ret == AVERROR(EAGAIN))
             continue;
+// std::cout << "c" << std::endl;
 
         if (ret == AVERROR_EOF)
         {
@@ -1586,6 +1599,7 @@ bool CvCapture_FFMPEG::grabFrame()
             packet.size = 0;
             packet.stream_index = video_stream;
         }
+// std::cout << "d" << std::endl;
 
         if( packet.stream_index != video_stream )
         {
@@ -1601,26 +1615,34 @@ bool CvCapture_FFMPEG::grabFrame()
             }
             continue;
         }
+// std::cout << "e" << std::endl;
 
         if (rawMode)
         {
             valid = processRawPacket();
+            std::cout << "grab valid a " << valid << std::endl;
             break;
         }
+// std::cout << "f" << std::endl;
 
         // Decode video frame
 #if USE_AV_SEND_FRAME_API
         if (avcodec_send_packet(context, &packet) < 0) {
+            // std::cout << "break" << std::endl;
             break;
         }
         ret = avcodec_receive_frame(context, picture);
+// std::cout << "aa" << std::endl;
 #else
         int got_picture = 0;
         avcodec_decode_video2(context, picture, &got_picture, &packet);
         ret = got_picture ? 0 : -1;
+// std::cout << "bb" << std::endl;
 #endif
+// std::cout << "ret " << ret << std::endl;
         if (ret >= 0) {
             valid = true;
+    // std::cout << "grab valid b " << valid << std::endl;
         } else if (ret == AVERROR(EAGAIN)) {
             continue;
         }
@@ -1636,6 +1658,7 @@ bool CvCapture_FFMPEG::grabFrame()
             }
         }
     }
+    // std::cout << "grab valid c " << valid << std::endl;
 
     if (valid) {
         if (picture_pts == AV_NOPTS_VALUE_) {
@@ -1672,11 +1695,13 @@ bool CvCapture_FFMPEG::grabFrame()
 #endif
 
     // return if we have a new frame or not
+    // std::cout << "grab valid " << valid << std::endl;
     return valid;
 }
 
 bool CvCapture_FFMPEG::retrieveFrame(int flag, unsigned char** data, int* step, int* width, int* height, int* cn, int* depth)
 {
+    // std::cout << " retrieveFrame " << std::endl;
     if (!video_st || (!rawMode && !context))
         return false;
 
@@ -1703,7 +1728,10 @@ bool CvCapture_FFMPEG::retrieveFrame(int flag, unsigned char** data, int* step, 
     AVFrame* sw_picture = picture;
 #if USE_AV_HW_CODECS
     // if hardware frame, copy it to system memory
+    // std::cout << picture << " " << picture->hw_frames_ctx << std::endl;
+    CV_Assert(picture->hw_frames_ctx);
     if (picture && picture->hw_frames_ctx) {
+        // printf("transfer\n");
         sw_picture = av_frame_alloc();
         //if (av_hwframe_map(sw_picture, picture, AV_HWFRAME_MAP_READ) < 0) {
         if (av_hwframe_transfer_data(sw_picture, picture, 0) < 0) {
@@ -1804,10 +1832,13 @@ bool CvCapture_FFMPEG::retrieveFrame(int flag, unsigned char** data, int* step, 
 bool CvCapture_FFMPEG::retrieveHWFrame(cv::OutputArray output)
 {
 #if USE_AV_HW_CODECS
+    CV_Assert(picture->hw_frames_ctx);
     // check that we have HW frame in GPU memory
     if (!picture || !picture->hw_frames_ctx || !context) {
         return false;
     }
+
+    printf("retrieveHWFrame\n");
 
     // GPU color conversion NV12->BGRA, from GPU media buffer to GPU OpenCL buffer
     return hw_copy_frame_to_umat(context->hw_device_ctx, picture, output);
@@ -2611,6 +2642,8 @@ bool CvVideoWriter_FFMPEG::writeFrame( const unsigned char* data, int step, int 
 
     bool ret;
 #if USE_AV_HW_CODECS
+                // printf("here2\n");
+
     if (context->hw_device_ctx) {
         // copy data to HW frame
         AVFrame* hw_frame = av_frame_alloc();
@@ -2623,6 +2656,7 @@ bool CvVideoWriter_FFMPEG::writeFrame( const unsigned char* data, int step, int 
             av_frame_free(&hw_frame);
             return false;
         }
+        // printf("transfer 2\n");
         if (av_hwframe_transfer_data(hw_frame, picture, 0) < 0) {
             CV_LOG_ERROR(NULL, "Error copying data from CPU to GPU (av_hwframe_transfer_data)");
             av_frame_free(&hw_frame);
@@ -3224,6 +3258,8 @@ bool CvVideoWriter_FFMPEG::open( const char * filename, int fourcc,
         av_dump_format(oc, 0, filename, 1);
 #endif
 #endif
+        printf("check hw_device_ctx\n");
+        CV_Assert(hw_device_ctx);
         if (encode_video) {
 #if USE_AV_HW_CODECS
             if (hw_device_ctx) {

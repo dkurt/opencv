@@ -269,6 +269,7 @@ enum VideoAccelerationType
     VIDEO_ACCELERATION_VAAPI    =  3,  //!< VAAPI
     VIDEO_ACCELERATION_MFX      =  4,  //!< libmfx (Intel MediaSDK/oneVPL)
     VIDEO_ACCELERATION_DRM       =  5,  //!< Raspberry Pi V4
+    VIDEO_ACCELERATION_CUDA      =  6,  //!< NVIDIA CUDA
 };
 
 //! @} Hardware acceleration support
