@@ -563,7 +563,9 @@ bool VideoCapture::read(OutputArray image)
     } else {
         std::cout << "grab false" << std::endl;
         image.release();
+        return false;
     }
+    return true;
     return !image.empty();
 }
 

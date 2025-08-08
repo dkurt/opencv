@@ -1294,11 +1294,12 @@ bool CvCapture_FFMPEG::open(const char* _filename, const Ptr<IStreamReader>& str
                 hw_type = AV_HWDEVICE_TYPE_CUDA;
                 if (hw_type != AV_HWDEVICE_TYPE_NONE)
                 {
-                    printf("not none\n");
                     CV_LOG_DEBUG(NULL, "FFMPEG: trying to configure H/W acceleration: '" << accel_iter.hw_type_device_string() << "'");
                     AVPixelFormat hw_pix_fmt = AV_PIX_FMT_NONE;
                     codec = hw_find_codec(codec_id, hw_type, av_codec_is_decoder, accel_iter.disabled_codecs().c_str(), &hw_pix_fmt);
+                    // std::cout << "hw_pix_fmt " << hw_pix_fmt << std::endl;
                     codec = avcodec_find_decoder_by_name("h264_cuvid");
+                    // codec = avcodec_find_decoder_by_name("h264_nvdec");
                     // std::cout << "codec " << codec << std::endl;
                     if (codec)
                     {
@@ -1837,8 +1838,8 @@ bool CvCapture_FFMPEG::retrieveHWFrame(cv::OutputArray output)
     if (!picture || !picture->hw_frames_ctx || !context) {
         return false;
     }
-
-    printf("retrieveHWFrame\n");
+    return hw_copy_frame_to_gpumat(context->hw_device_ctx, picture, output);
+    // printf("retrieveHWFrame\n");
 
     // GPU color conversion NV12->BGRA, from GPU media buffer to GPU OpenCL buffer
     return hw_copy_frame_to_umat(context->hw_device_ctx, picture, output);

@@ -118,7 +118,6 @@ public:
             if (!ffmpegCapture->retrieveFrame(flag, &data, &step, &width, &height, &cn, &depth))
                 return false;
         }
-        // std::cout << (void*)frame.getMat().ptr<uint8_t>() << std::endl;
         cv::Mat(height, width, CV_MAKETYPE(depth, cn), data, step).copyTo(frame);
         return true;
     }

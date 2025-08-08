@@ -43,6 +43,8 @@
 #endif
 #endif // HAVE_VA
 
+#include "opencv2/core/cuda.hpp"
+
 // FFMPEG "C" headers
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -59,6 +61,9 @@ extern "C" {
 #endif
 #ifdef HAVE_DRM
 #include <libavutil/hwcontext_drm.h>
+#endif
+#ifdef HAVE_CUDA
+#include <libavutil/hwcontext_cuda.h>
 #endif
 }
 
@@ -668,6 +673,7 @@ AVBufferRef* hw_create_frames(struct AVCodecContext* codec_ctx, AVBufferRef *hw_
             }
         }
     }
+    // printf("here\n");
     if (frames_ctx->sw_format == AV_PIX_FMT_NONE)
         frames_ctx->sw_format = HW_DEFAULT_SW_FORMAT;
     if (frames_ctx->initial_pool_size == 0)
@@ -796,6 +802,7 @@ AVPixelFormat hw_get_format_callback(struct AVCodecContext *ctx, const enum AVPi
             break;
         if (hw_config->device_type == hw_type) {
             for (int i = 0; fmt[i] != AV_PIX_FMT_NONE; i++) {
+    // printf("here 2\n");
                 if (fmt[i] == hw_config->pix_fmt) {
                     if (hw_config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_FRAMES_CTX) {
                         ctx->sw_pix_fmt = HW_DEFAULT_SW_FORMAT;
@@ -861,6 +868,67 @@ hw_copy_frame_to_umat(AVBufferRef* ctx, AVFrame* hw_frame, cv::OutputArray outpu
         return false;
     }
 #endif // HAVE_OPENCL
+
+    return false;
+}
+
+static bool
+hw_copy_frame_to_gpumat(AVBufferRef* ctx, AVFrame* hw_frame, cv::OutputArray output) {
+    if (!ctx)
+        return false;
+
+    // printf("hw_copy_frame_to_gpumat\n");
+    AVHWDeviceContext *hw_device_ctx = (AVHWDeviceContext *) ctx->data;
+    // AVHWDeviceType child_type = hw_check_opencl_context(hw_device_ctx);
+    if (hw_device_ctx->type != AV_HWDEVICE_TYPE_CUDA)
+        return false;
+
+    AVCUDADeviceContext* hwctx = (AVCUDADeviceContext*)hw_device_ctx->hwctx;
+    if (AV_PIX_FMT_CUDA != hw_frame->format)
+        return false;
+
+    // std::cout << hwctx << std::endl;
+
+    // std::cout << hw_frame->data << std::endl;
+    // std::cout << hw_frame->height << std::endl;
+    // std::cout << hw_frame->width << std::endl;
+    CV_CheckEQ(((AVHWFramesContext*)hw_frame->hw_frames_ctx->data)->sw_format, HW_DEFAULT_SW_FORMAT, "");
+
+    // CUdeviceptr ptr = hw_frame->data[0];
+    // std::cout << ctx->size << std::endl;
+    cv::cuda::GpuMat m(hw_frame->height, hw_frame->width, CV_8UC1, hw_frame->data[0]);
+    // cv::cuda::GpuMat m2(hw_frame->height, hw_frame->width, CV_8UC2, hw_frame->data[1]);
+
+    // // .copyTo(output.getGpuMat());
+    // Mat y, uv, frame;
+    // m.download(y);
+    // m2.download(uv);
+    // cvtColorTwoPlane(y, uv, frame, COLOR_YUV2BGR_NV12);
+    // // m.download(frame);
+    // imwrite("/home/d.kurtaev/image.png", frame);
+    // frame.copyTo(output);
+    // std::cout << "~~~~~~~~~~" << std::endl;
+    output.setTo(m);
+    // CV_Assert(!output.empty());
+    return true;
+
+    // .copyTo(output.getGpuMat());
+    // char fmtstr[128];
+    // av_get_pix_fmt_string(fmtstr, 128, (AVPixelFormat)hw_frame->format);
+    // // std::cout <<    AV_PIX_FMT_GRAY16LE << std::endl;
+    // // std::cout <<    AV_PIX_FMT_BGR24 << std::endl;
+    // std::cout << fmtstr << std::endl;
+    // std::cout << AV_PIX_FMT_CUDA << std::endl;
+
+    // AVBufferRef* ctx = (AVBufferRef*)hw_device_ctx->user_opaque;
+    // hw_device_ctx = (AVHWDeviceContext*)ctx->data;
+
+
+    // std::cout << child_type << std::endl;
+
+    // if (child_type == AV_HWDEVICE_TYPE_NONE)
+    //     return false;
+
 
     return false;
 }
