@@ -877,39 +877,25 @@ hw_copy_frame_to_gpumat(AVBufferRef* ctx, AVFrame* hw_frame, cv::OutputArray out
     if (!ctx)
         return false;
 
-    // printf("hw_copy_frame_to_gpumat\n");
     AVHWDeviceContext *hw_device_ctx = (AVHWDeviceContext *) ctx->data;
-    // AVHWDeviceType child_type = hw_check_opencl_context(hw_device_ctx);
     if (hw_device_ctx->type != AV_HWDEVICE_TYPE_CUDA)
         return false;
 
-    AVCUDADeviceContext* hwctx = (AVCUDADeviceContext*)hw_device_ctx->hwctx;
+    // AVCUDADeviceContext* hwctx = (AVCUDADeviceContext*)hw_device_ctx->hwctx;
     if (AV_PIX_FMT_CUDA != hw_frame->format)
         return false;
 
-    // std::cout << hwctx << std::endl;
+    CV_CheckEQ(((AVHWFramesContext*)hw_frame->hw_frames_ctx->data)->sw_format, AV_PIX_FMT_NV12, "NV12 expected");
 
-    // std::cout << hw_frame->data << std::endl;
-    // std::cout << hw_frame->height << std::endl;
-    // std::cout << hw_frame->width << std::endl;
-    CV_CheckEQ(((AVHWFramesContext*)hw_frame->hw_frames_ctx->data)->sw_format, HW_DEFAULT_SW_FORMAT, "");
+    cv::cuda::GpuMat yPlane(hw_frame->height, hw_frame->width, CV_8U, hw_frame->data[0], hw_frame->linesize[0]);
+    cv::cuda::GpuMat uvPlane(hw_frame->height / 2, hw_frame->width / 2, CV_8UC2, hw_frame->data[1], hw_frame->linesize[1]);
 
-    // CUdeviceptr ptr = hw_frame->data[0];
-    // std::cout << ctx->size << std::endl;
-    cv::cuda::GpuMat m(hw_frame->height, hw_frame->width, CV_8UC1, hw_frame->data[0]);
-    // cv::cuda::GpuMat m2(hw_frame->height, hw_frame->width, CV_8UC2, hw_frame->data[1]);
+    Mat y, uv, frame;
+    yPlane.download(y);
+    uvPlane.download(uv);
+    cvtColorTwoPlane(y, uv, frame, COLOR_YUV2BGR_NV12);
 
-    // // .copyTo(output.getGpuMat());
-    // Mat y, uv, frame;
-    // m.download(y);
-    // m2.download(uv);
-    // cvtColorTwoPlane(y, uv, frame, COLOR_YUV2BGR_NV12);
-    // // m.download(frame);
-    // imwrite("/home/d.kurtaev/image.png", frame);
-    // frame.copyTo(output);
-    // std::cout << "~~~~~~~~~~" << std::endl;
-    output.setTo(m);
-    // CV_Assert(!output.empty());
+    output.setTo(frame);
     return true;
 
     // .copyTo(output.getGpuMat());

@@ -250,13 +250,6 @@ void cv::cuda::GpuMat::download(OutputArray _dst) const
     _dst.create(size(), type());
     Mat dst = _dst.getMat();
 
-    std::cout << (void*)dst.data << std::endl;
-    std::cout << dst.step << std::endl;
-    std::cout << (void*)data << std::endl;
-    std::cout << step << std::endl;
-    std::cout << cols << std::endl;
-    std::cout << rows << std::endl;
-    std::cout << elemSize() << std::endl;
     CV_CUDEV_SAFE_CALL( cudaMemcpy2D(dst.data, dst.step, data, step, cols * elemSize(), rows, cudaMemcpyDeviceToHost) );
 }
 
