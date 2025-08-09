@@ -87,6 +87,7 @@ const char* getVideoAccelerationName(VideoAccelerationType va_type)
     case VIDEO_ACCELERATION_VAAPI: return "vaapi";
     case VIDEO_ACCELERATION_MFX: return "mfx";
     case VIDEO_ACCELERATION_DRM : return "drm";
+    case VIDEO_ACCELERATION_CUDA : return "cuda";
     }
     return "unknown";
 }
@@ -126,6 +127,7 @@ std::string getDecoderConfiguration(VideoAccelerationType va_type, AVDictionary 
     case VIDEO_ACCELERATION_VAAPI: return "vaapi.iHD";
     case VIDEO_ACCELERATION_MFX: return "qsv.iHD";
     case VIDEO_ACCELERATION_DRM: return "drm";
+    case VIDEO_ACCELERATION_CUDA: return "cuda";
     }
     return "";
 #endif
@@ -166,6 +168,7 @@ std::string getEncoderConfiguration(VideoAccelerationType va_type, AVDictionary 
     case VIDEO_ACCELERATION_VAAPI: return "vaapi.iHD";
     case VIDEO_ACCELERATION_MFX: return "qsv.iHD";
     case VIDEO_ACCELERATION_DRM: return "";
+    case VIDEO_ACCELERATION_CUDA: return "";
     // Raspberry Pi 5 has no encoders, so we don't support it
     }
     return "unknown";
@@ -888,9 +891,7 @@ hw_copy_frame_to_gpumat(AVBufferRef* ctx, AVFrame* hw_frame, cv::OutputArray out
     Mat y, uv, frame;
     yPlane.download(y);
     uvPlane.download(uv);
-    cvtColorTwoPlane(y, uv, frame, COLOR_YUV2BGR_NV12);
-    imwrite("/home/d.kurtaev/image.png", frame);
-    output.setTo(frame);
+    cvtColorTwoPlane(y, uv, output, COLOR_YUV2BGR_NV12);
     return true;
 
     // .copyTo(output.getGpuMat());

@@ -1280,7 +1280,7 @@ bool CvCapture_FFMPEG::open(const char* _filename, const Ptr<IStreamReader>& str
             err = -1;
 #if USE_AV_HW_CODECS
             HWAccelIterator accel_iter(va_type, false/*isEncoder*/, dict);
-            while (accel_iter.good() || true)
+            while (accel_iter.good())
             {
 #else
             do {
@@ -1288,13 +1288,28 @@ bool CvCapture_FFMPEG::open(const char* _filename, const Ptr<IStreamReader>& str
 #if USE_AV_HW_CODECS
                 accel_iter.parse_next();
                 AVHWDeviceType hw_type = accel_iter.hw_type();
-                hw_type = AV_HWDEVICE_TYPE_CUDA;
                 if (hw_type != AV_HWDEVICE_TYPE_NONE)
                 {
                     CV_LOG_DEBUG(NULL, "FFMPEG: trying to configure H/W acceleration: '" << accel_iter.hw_type_device_string() << "'");
                     AVPixelFormat hw_pix_fmt = AV_PIX_FMT_NONE;
-                    codec = hw_find_codec(codec_id, hw_type, av_codec_is_decoder, accel_iter.disabled_codecs().c_str(), &hw_pix_fmt);
-                    codec = avcodec_find_decoder_by_name("h264_cuvid");
+                    AVDictionaryEntry* video_codec_param = av_dict_get(dict, "video_codec", NULL, 0);
+                    if (video_codec_param == NULL)
+                    {
+                        codec = hw_find_codec(codec_id, hw_type, av_codec_is_decoder, accel_iter.disabled_codecs().c_str(), &hw_pix_fmt);
+                        if (!codec)
+                        {
+                            CV_LOG_ERROR(NULL, "Could not find decoder for codec_id=" << (int)codec_id);
+                        }
+                    }
+                    else
+                    {
+                        CV_LOG_DEBUG(NULL, "FFMPEG: Using video_codec='" << video_codec_param->value << "'");
+                        codec = avcodec_find_decoder_by_name(video_codec_param->value);
+                        if (!codec)
+                        {
+                            CV_LOG_ERROR(NULL, "Could not find decoder '" << video_codec_param->value << "'");
+                        }
+                    }
                     if (codec)
                     {
 #ifdef CV_FFMPEG_CODECPAR
