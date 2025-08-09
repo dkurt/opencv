@@ -540,8 +540,6 @@ bool VideoCapture::retrieve(OutputArray image, int channel)
     CV_INSTRUMENT_REGION();
 
     bool ret = false;
-    // std::cout << "retrieve "<< std::endl;
-    // std::cout << icap.empty() << std::endl;
     if (!icap.empty())
     {
         ret = icap->retrieveFrame(channel, image);
@@ -561,11 +559,8 @@ bool VideoCapture::read(OutputArray image)
     {
         retrieve(image);
     } else {
-        std::cout << "grab false" << std::endl;
         image.release();
-        return false;
     }
-    return true;
     return !image.empty();
 }
 

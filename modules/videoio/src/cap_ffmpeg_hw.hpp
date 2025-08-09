@@ -62,9 +62,6 @@ extern "C" {
 #ifdef HAVE_DRM
 #include <libavutil/hwcontext_drm.h>
 #endif
-#ifdef HAVE_CUDA
-#include <libavutil/hwcontext_cuda.h>
-#endif
 }
 
 #define HW_DEFAULT_POOL_SIZE    32
@@ -673,7 +670,6 @@ AVBufferRef* hw_create_frames(struct AVCodecContext* codec_ctx, AVBufferRef *hw_
             }
         }
     }
-    // printf("here\n");
     if (frames_ctx->sw_format == AV_PIX_FMT_NONE)
         frames_ctx->sw_format = HW_DEFAULT_SW_FORMAT;
     if (frames_ctx->initial_pool_size == 0)
@@ -802,7 +798,6 @@ AVPixelFormat hw_get_format_callback(struct AVCodecContext *ctx, const enum AVPi
             break;
         if (hw_config->device_type == hw_type) {
             for (int i = 0; fmt[i] != AV_PIX_FMT_NONE; i++) {
-    // printf("here 2\n");
                 if (fmt[i] == hw_config->pix_fmt) {
                     if (hw_config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_FRAMES_CTX) {
                         ctx->sw_pix_fmt = HW_DEFAULT_SW_FORMAT;
@@ -894,7 +889,7 @@ hw_copy_frame_to_gpumat(AVBufferRef* ctx, AVFrame* hw_frame, cv::OutputArray out
     yPlane.download(y);
     uvPlane.download(uv);
     cvtColorTwoPlane(y, uv, frame, COLOR_YUV2BGR_NV12);
-
+    imwrite("/home/d.kurtaev/image.png", frame);
     output.setTo(frame);
     return true;
 

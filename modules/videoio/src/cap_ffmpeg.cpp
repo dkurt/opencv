@@ -95,11 +95,9 @@ public:
     }
     virtual bool retrieveFrame_(int flag, cv::OutputArray frame) CV_OVERRIDE
     {
-        // std::cout << "retrieveFrame_" << std::endl;
         unsigned char* data = 0;
         int step=0, width=0, height=0, cn=0, depth=0;
 
-        CV_Assert(ffmpegCapture);
         if (!ffmpegCapture)
             return false;
 
@@ -118,6 +116,7 @@ public:
             if (!ffmpegCapture->retrieveFrame(flag, &data, &step, &width, &height, &cn, &depth))
                 return false;
         }
+
         cv::Mat(height, width, CV_MAKETYPE(depth, cn), data, step).copyTo(frame);
         return true;
     }
