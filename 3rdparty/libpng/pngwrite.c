@@ -137,6 +137,8 @@ png_write_info_before_PLTE(png_structrp png_ptr, png_const_inforp info_ptr)
 #  endif
 #endif
 
+      png_write_cICP(png_ptr, 9, 18, 0, 1);
+
 #ifdef PNG_COLORSPACE_SUPPORTED
       /* Write only one of sRGB or an ICC profile.  If a profile was supplied
        * and it matches one of the known sRGB ones issue a warning.
