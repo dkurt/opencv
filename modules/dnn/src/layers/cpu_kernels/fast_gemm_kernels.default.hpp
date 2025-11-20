@@ -130,7 +130,6 @@ static inline void fast_gemm_f32(int k, const char *a_, const char *b_,
     float* c = (float*)c_;
 
     float sbuf[FAST_GEMM_F32_MR * FAST_GEMM_F32_NR];
-    memset(sbuf, 0, sizeof(sbuf));
     for(int p = 0; p < k; p++) {
         for( int i = 0; i < FAST_GEMM_F32_MR; i++ ) {
             float ai = a[FAST_GEMM_F32_MR * p + i];
@@ -160,7 +159,6 @@ static void fast_gemm_macro_kernel(int m, int n, int k,
             int nr_esz = nr * esz;
             bool partial = (bool)((mr < FAST_GEMM_F32_MR) | (nr < FAST_GEMM_F32_NR));
             if (partial) {
-                memset(tempC, 0, sizeof(tempC));
                 cptr = (char *)tempC;
                 ldc = FAST_GEMM_F32_NR;
                 for(int p = 0; p < mr; p++)

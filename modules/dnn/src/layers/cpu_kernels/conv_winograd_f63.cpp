@@ -177,13 +177,11 @@ int runWinograd63(InputArray _input, InputArray _fusedAddMat, OutputArray _outpu
         AutoBuffer<char> out_wbuf_;
         out_wbuf_.allocate((out_wbuf_size + VEC_ALIGN) * esz);
         char* out_wbuf = alignPtr(out_wbuf_.data(), VEC_ALIGN * esz);
-        memset(out_wbuf, 0, out_wbuf_size * esz);
 
         // For saving the fuse_Add data.
         AutoBuffer<float> outbuf_;
         outbuf_.allocate(outbuf_size + VEC_ALIGN);
         float* outbuf = alignPtr(outbuf_.data(), VEC_ALIGN);
-        memset(outbuf, 0, outbuf_size * sizeof(outbuf[0]));
 
         int ngk0 = (int)(((int64_t)N*Kg_nblocks*ngroups)*task_id/ntasks);
         int ngk1 = (int)(((int64_t)N*Kg_nblocks*ngroups)*(task_id+1)/ntasks);
