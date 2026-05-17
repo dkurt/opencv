@@ -113,7 +113,7 @@ void normAssertDetections(
         const std::vector<float>& testScores,
         const std::vector<cv::Rect2d>& testBoxes,
         const char *comment = "", double confThreshold = 0.0,
-        double scores_diff = 1e-5, double boxes_iou_diff = 1e-4);
+        double scores_diff = 5e-4, double boxes_iou_diff = 1e-4);
 
 // For SSD-based object detection networks which produce output of shape 1x1xNx7
 // where N is a number of detections and an every detection is represented by

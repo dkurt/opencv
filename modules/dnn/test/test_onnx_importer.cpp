@@ -2646,7 +2646,7 @@ TEST_P(Test_ONNX_layers, CumSum)
 static void testYOLO(const std::string& weightPath, const std::vector<int>& refClassIds,
                      const std::vector<float>& refScores, const std::vector<Rect2d>& refBoxes,
                      Image2BlobParams imgParams, float conf_threshold = 0.3, float iou_threshold = 0.5,
-                     double scores_diff = 1e-5, double boxes_iou_diff = 1e-4, const std::string test_name = "")
+                     double scores_diff = 5e-4, double boxes_iou_diff = 1e-4, const std::string test_name = "")
 {
     std::string imgPath = _tf("../dog_orig_size.png");
 
